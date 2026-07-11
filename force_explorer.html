@@ -66,6 +66,12 @@
           <button data-d="0" class="on">Ebb — sets N&nbsp;↑</button>
           <button data-d="180">Flood — sets S&nbsp;↓</button></div>
         <div class="cap">Whether it opposes the waves depends on the wind — the model works it out (see “opposing current”).</div></div>
+      <div class="ctl"><label>Blocking model</label>
+        <div class="seg" id="blockmdl">
+          <button data-m="mono" class="on">Monochromatic</button>
+          <button data-m="spec">Spectral</button></div>
+        <div class="cap"><b>Monochromatic</b> = single peak period; steepness is singular at blocking (the cliff).
+          <b>Spectral</b> spreads the sea over many frequencies that block at different currents — a gradual ramp.</div></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
       <div class="ctl"><label for="L">Channel length (max fetch) <span class="val"><span id="Lv"></span> km</span></label>
         <input type="range" id="L" min="2" max="60" step="1" value="16"></div>
@@ -82,8 +88,10 @@
             and the upwind <b>fetch</b> (dashed) to where the wind meets open-water’s edge.</figcaption></figure>
         <figure><svg id="polar" viewBox="0 0 300 300"></svg>
           <figcaption class="cap">Danger rose — sweep the wind through every direction (current fixed):
-            <span style="color:#0a3d62;font-weight:700">steepness</span> and
-            <span style="color:#b5179e;font-weight:700">force</span> vs wind direction. Dot = current wind.</figcaption></figure>
+            <span style="color:#0a3d62;font-weight:700">steepness (active model)</span>,
+            <span style="color:#94a3b8;font-weight:700">steepness (other model, dashed)</span>, and
+            <span style="color:#b5179e;font-weight:700">force</span>. Dot = current wind.
+            <span id="sens"></span></figcaption></figure>
       </div>
 
       <div class="panel" style="margin-top:16px">
@@ -122,6 +130,36 @@
     </div>
   </details>
 
+  <details><summary>The blocking “cliff”, and why the spectral model is more realistic</summary>
+    <div class="body">
+      <p>Set a long narrow channel (say 31 km × 1.5 km), a 13 kt wind on-axis and a ~1.6 kt opposing
+      current, and the <b>monochromatic</b> model does something unphysical: a wind shift of just
+      <b>0–4°</b> flips the water from mild to hazardous. Two things combine to cause it.</p>
+      <p><b>1 · Fetch collapses over a few degrees.</b> For a channel the idealized fetch is
+      min(L⁄cosΔ, (W⁄2)⁄sinΔ). The two terms cross at Δ = atan((W⁄2)⁄L) — only ~1.4° for this channel —
+      and past it the fetch falls off as 1⁄sinΔ, dropping from 31 km to ~5 km within 8°. (That crossover
+      angle grows with width, which is exactly why the anomaly eases in a wider channel.)</p>
+      <p><b>2 · The steepening formula is singular at blocking.</b> As the opposing current nears a
+      quarter of the wave speed, the monochromatic factor S = x<sup>3.5</sup>⁄√(2−x)·S₀ <b>diverges</b>.
+      The shrinking fetch lowers the wave period, hence the wave speed, hence the blocking current — so
+      the fixed current walks the operating point straight into that singularity. The fetch is the
+      trigger; the singularity is the amplifier, and it lives in the core model, not just this channel
+      geometry.</p>
+      <p><b>How real calculations avoid it — the spectral view.</b> A real wind sea is not one wave but a
+      <b>spectrum</b> of frequencies, and each frequency has its own speed and blocks at its own current
+      (short, slow waves first). As the current builds, the high-frequency tail blocks and breaks
+      progressively rather than all at once, so the transition is a <b>gradual ramp</b>, not a cliff.
+      Toggle <b>Spectral</b> and watch the peak sensitivity drop (roughly halved here) and the dashed
+      monochromatic curve reveal the sharp lobe behind it. This is the essence of how spectral
+      action-balance models (SWAN — Booij et al. 1999; WAVEWATCH III) and the random-wave blocking
+      measurements of <b>Chawla &amp; Kirby (2002)</b> behave. A complementary fix on the geometry side is
+      an <b>effective (direction-averaged) fetch</b> (Saville 1954; CERC Shore Protection Manual), which
+      smooths the fetch-vs-direction spike — though a fixed ±45° window over-penalizes a narrow channel.</p>
+      <p>The spectral option here is a transparent <b>approximation</b> (a Pierson–Moskowitz spread with
+      per-component blocking), meant to build intuition, not a calibrated spectral solver.</p>
+    </div>
+  </details>
+
   <p class="foot">Idealized single-channel model for understanding — not a site forecast. Deep-water wind
   sea (JONSWAP fetch-limited, Pierson–Moskowitz cap) steepened by an opposing current (wave-action,
   blocking at c₀⁄4). No swell, no build-up time, no shoaling. Advisory only — not for navigation.</p>
@@ -146,6 +184,29 @@ function haz(Hs,Tp,dirFrom,curKt,curToward){                 // returns band, S,
   let Hamp=Hs*hf;
   if(Hamp<0.3) band=Math.min(band,1); else if(Hamp<0.5) band=Math.min(band,2);
   return {band,S:Math.min(S,0.2),hf,Hamp,Uopp,c0,L0}; }
+// SPECTRAL blocking: a real wind sea is a spectrum, and each frequency has its own phase speed, so it
+// blocks at its own current (short/slow waves first). Sweeping a Pierson–Moskowitz shape in f/fp,
+// steepening each component on the opposing current, capping breaking components at the 1/7 limit and
+// dissipating their energy, then energy-weighting, turns the monochromatic singularity into a gradual
+// ramp — the essence of how spectral models (Chawla & Kirby 2002; SWAN) avoid the cliff.
+function hazSpec(Hs,Tp,dirFrom,curKt,curToward){
+  if(!(Hs>0.05)||!(Tp>0)) return {band:-1,S:0,hf:1,Hamp:0,Uopp:0,c0:G*Tp/(2*Math.PI),L0:0};
+  const c0=G*Tp/(2*Math.PI), Uopp=Math.abs(curKt)*KT*Math.cos((curToward-dirFrom)*Math.PI/180), S0=Hs/(c0*Tp);
+  let sSum=0,wSum=0,eSum=0,wAll=0;
+  for(let r=0.6;r<=1.9;r+=0.05){                    // r = f/fp; component phase speed c = c0/r
+    const c=c0/r, w=Math.pow(r,-5)*Math.exp(-1.25*Math.pow(r,-4));   // Pierson–Moskowitz spectral shape
+    if(!(w>1e-6)) continue; wSum+=w; wAll+=w;
+    const alpha=-Uopp/c, disc=1+4*alpha;
+    if(alpha<0&&disc<=0){ sSum+=w*(1/7); }          // blocked → breaks; energy dissipated (no eSum)
+    else { const x=Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha);
+      sSum += w*Math.min(Math.pow(x,3.5)/Math.sqrt(Math.max(2-x,1e-6))*S0, 1/7);
+      const af=Math.min(Math.pow(x,1.5)/Math.sqrt(Math.max(2-x,1e-6)),2.5); eSum+=w*af*af; } }
+  const S=sSum/wSum, hf=Math.sqrt(eSum/Math.max(wAll,1e-9)); let Hamp=Hs*hf;
+  let band=S>=0.143?4:S>=0.10?3:S>=0.075?2:S>=0.05?1:0;
+  if(Hamp<0.3) band=Math.min(band,1); else if(Hamp<0.5) band=Math.min(band,2);
+  return {band,S:Math.min(S,0.2),hf,Hamp,Uopp,c0,L0:c0*Tp}; }
+let blockModel="mono";
+function hazard(Hs,Tp,dirFrom,cur,curTo,model){ return (model||blockModel)==="spec"?hazSpec(Hs,Tp,dirFrom,cur,curTo):haz(Hs,Tp,dirFrom,cur,curTo); }
 // idealized channel: paddler mid-channel; along-axis fetch up to length L, across up to half-width
 function fetchKm(phiFromAxisDeg,Lkm,Wkm){ const d=Math.abs(((phiFromAxisDeg%180)+180)%180); // 0..180
   const dd=(d>90?180-d:d)*Math.PI/180, c=Math.max(Math.cos(dd),1e-3), s=Math.max(Math.sin(dd),1e-3);
@@ -158,6 +219,8 @@ const cmp=d=>compass[Math.round(((d%360)+360)%360/22.5)%16];
 let curToward=0;                                            // 0 = ebb toward you (N/up); 180 = flood away
 $("curdir").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return;
   curToward=+b.dataset.d; [...$("curdir").children].forEach(x=>x.classList.toggle("on",x===b)); render(); });
+$("blockmdl").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return;
+  blockModel=b.dataset.m; [...$("blockmdl").children].forEach(x=>x.classList.toggle("on",x===b)); render(); });
 
 // P (kW/m) from height & period
 const powerKW=(H,Tp)=> RHO*G*G/(64*Math.PI)*H*H*Tp/1000;
@@ -165,9 +228,9 @@ const energyKJ=(H)=> RHO*G*H*H/16/1000;
 
 function state(){ return { U:+$("U").value*KT, phi:+$("phi").value, V:+$("V").value, L:+$("L").value, W:+$("W").value }; }
 
-function compute(phiDeg){                                   // full result for a wind FROM phiDeg
+function compute(phiDeg, model){                            // full result for a wind FROM phiDeg
   const s=state(), F=fetchKm(phiDeg, s.L, s.W)*1000, ws=windSea(s.U,F);
-  const h=haz(ws.Hs,ws.Tp,phiDeg,s.V,curToward);
+  const h=hazard(ws.Hs,ws.Tp,phiDeg,s.V,curToward,model);
   const P=powerKW(h.Hamp||0, ws.Tp), E=energyKJ(h.Hamp||0);
   return {phiDeg,fetch:F/1000,Hs:ws.Hs,Tp:ws.Tp,...h,P,E}; }
 
@@ -243,15 +306,18 @@ function drawPolar(s){
   // compass ticks
   ["N","E","S","W"].forEach((lab,i)=>{ const br=i*90*Math.PI/180, x=cx+Math.sin(br)*(R+10), y=cy-Math.cos(br)*(R+10);
     g+=`<text x="${x}" y="${y+3}" font-size="10" fill="#94a3b8" text-anchor="middle">${lab}</text>`; });
-  // sweep
+  // sweep — steepness for BOTH blocking models (active solid, other dashed) + force for the active one
+  const other = blockModel==="mono"?"spec":"mono";
   let Pmax=1e-6, dat=[];
-  for(let phi=0;phi<=360;phi+=4){ const r=compute(phi); dat.push({phi,S:r.S||0,P:r.P||0}); if(r.P>Pmax)Pmax=r.P; }
+  for(let phi=0;phi<=360;phi+=3){ const r=compute(phi), o=compute(phi,other);
+    dat.push({phi,S:r.S||0,So:o.S||0,P:r.P||0}); if(r.P>Pmax)Pmax=r.P; }
   const path=(key,scaleR)=>{ let d="";
     dat.forEach((p,i)=>{ const rad=scaleR(p[key]), br=p.phi*Math.PI/180, x=cx+Math.sin(br)*rad, y=cy-Math.cos(br)*rad;
       d+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1); }); return d+"Z"; };
   const fR=v=>R*Math.min(v/Pmax,1);
   g+=`<path d="${path('P',fR)}" fill="rgba(181,23,158,.10)" stroke="#b5179e" stroke-width="2"/>`;
-  g+=`<path d="${path('S',sR)}" fill="rgba(10,61,98,.10)" stroke="#0a3d62" stroke-width="2"/>`;
+  g+=`<path d="${path('So',sR)}" fill="none" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="4 3"/>`;  // other model
+  g+=`<path d="${path('S',sR)}" fill="rgba(10,61,98,.10)" stroke="#0a3d62" stroke-width="2.4"/>`;            // active model
   // current wind marker
   const cr=compute(s.phi), br=s.phi*Math.PI/180;
   const mx=cx+Math.sin(br)*sR(cr.S||0), my=cy-Math.cos(br)*sR(cr.S||0);
@@ -259,6 +325,13 @@ function drawPolar(s){
   g+=`<circle cx="${mx}" cy="${my}" r="4" fill="#0a3d62" stroke="#fff" stroke-width="1.5"/>`;
   g+=`<text x="${cx}" y="${cy+R+22}" font-size="10" fill="#667085" text-anchor="middle">peak power ≈ ${Pmax.toFixed(1)} kW/m</text>`;
   $("polar").innerHTML=g;
+  // steepness sensitivity: biggest change in S per 1° of wind shift, each model (lower = more realistic)
+  const maxDS=model=>{ let prev=null,mx=0; for(let phi=0;phi<=180;phi++){ const S=compute(phi,model).S||0;
+    if(prev!==null) mx=Math.max(mx,Math.abs(S-prev)); prev=S; } return mx; };
+  const act=maxDS(blockModel), oth=maxDS(other);
+  $("sens").innerHTML=`<br><b>Peak sensitivity</b> (biggest ΔS per 1° wind shift): `
+    +`<b style="color:#0a3d62">${act.toFixed(3)}/°</b> active vs <b style="color:#94a3b8">${oth.toFixed(3)}/°</b> other`
+    +(blockModel==="spec"&&oth>0?` — spectral is ${(oth/Math.max(act,1e-4)).toFixed(1)}× gentler`:``);
 }
 
 ["U","phi","V","L","W"].forEach(id=>$(id).addEventListener("input",render));
