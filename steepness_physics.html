@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wind, fetch and current — the physics of wave steepness</title>
+<style>
+  @page{ size:letter; margin:20mm 18mm; }
+  html{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body{ font-family:Georgia,"Times New Roman",serif; color:#1b2430; line-height:1.5; font-size:11.5pt; margin:0; }
+  h1{ font-size:20pt; margin:0 0 2pt; color:#0a3d62; }
+  .sub{ color:#667085; font-size:10.5pt; margin:0 0 14pt; }
+  h2{ font-size:13.5pt; color:#0a3d62; margin:18pt 0 4pt; border-bottom:1px solid #e3e8ef; padding-bottom:2pt; }
+  h3{ font-size:11.5pt; margin:12pt 0 3pt; }
+  p{ margin:6pt 0; }
+  .eq{ display:block; background:#f5f7fa; border:1px solid #e3e8ef; border-radius:5px; padding:7pt 10pt;
+       margin:8pt 0; font-family:"Cambria Math",Georgia,serif; font-size:12pt; }
+  .eq .cap{ color:#667085; font-size:9.5pt; font-family:Georgia,serif; }
+  .var{ font-style:italic; }
+  figure{ margin:10pt 0; text-align:center; }
+  figure svg{ width:78%; height:auto; }
+  figcaption{ font-size:9.5pt; color:#667085; margin-top:2pt; }
+  table.wex{ border-collapse:collapse; width:100%; margin:8pt 0; font-size:10.5pt; }
+  table.wex th,table.wex td{ border:1px solid #e3e8ef; padding:4pt 8pt; text-align:left; }
+  table.wex th{ background:#f0f4f8; } table.wex td.n{ text-align:right; }
+  .pill{ display:inline-block; padding:1pt 8pt; border-radius:9pt; color:#fff; font-weight:700; font-size:9.5pt; }
+  .callout{ border:1px solid #b0863a; background:#fdf7ec; border-radius:6px; padding:8pt 11pt; margin:10pt 0; }
+  .refs{ font-size:9.5pt; color:#333; } .refs li{ margin:2pt 0; }
+  .foot{ color:#667085; font-size:9pt; margin-top:16pt; border-top:1px solid #e3e8ef; padding-top:6pt; }
+  a{ color:#0a3d62; }
+</style>
+</head>
+<body>
+<h1>Wind, fetch and current: the physics of wave steepness</h1>
+<p class="sub">Working notes for the Unified Marine Map (steepness layer) · draft, revised as we go</p>
+
+<p>This note explains, for a curious non-physicist, how the map turns a wind forecast and a current
+forecast into a <b>steepness</b> hazard — and why the answer is often counter-intuitive: a modest shift
+in wind direction, or a small change in current, can matter more than a big change in wind speed. Every
+equation below is the one the live map actually evaluates, and the two charts are drawn from those same
+formulas. It closes with the open question we want to explore next: the <b>force</b> a steep wave puts on
+a kayak.</p>
+
+<h2>1 · It is steepness, not height, that tips a boat</h2>
+<p>A wave’s danger is better measured by its <b>steepness</b> — height divided by wavelength — than by
+its height alone.</p>
+<span class="eq"><span class="var">S</span> = <span class="var">H</span> ⁄ <span class="var">L</span>
+  &nbsp;&nbsp;<span class="cap">a 1 m swell 100 m long (S = 1/100) is a gentle roll; a 1 m wave 7 m long (S = 1/7) is a breaking wall</span></span>
+<p>Deep-water gravity waves become unstable and break when steepness reaches the limiting value found by
+Michell (1893) and Stokes for the highest progressive wave, where the crest sharpens to a 120° angle:</p>
+<span class="eq"><span class="var">S</span><sub>max</sub> = <span class="var">H</span> ⁄ <span class="var">L</span> ≈ 1 ⁄ 7 = 0.143
+  &nbsp;&nbsp;<span class="cap">in a real irregular sea a significant steepness near 1/10 already means many crests are breaking</span></span>
+<p>The map therefore reports steepness in four bands: <b>mild</b> (S ≳ 0.05), <b>caution</b> (≳ 0.075),
+<b>rough</b> (≳ 0.10) and <b>hazardous / breaking</b> (≳ 0.143).</p>
+
+<h2>2 · How wind builds a sea — and why fetch is the lever</h2>
+<p>Wind pushes on the water and waves grow. Two things cap how big they get: the <b>wind speed</b>, and
+the <b>fetch</b> — the distance of open water the wind crosses before reaching you. Near an upwind shore
+the sea is small; the further open water stretches upwind, the more the waves build, until they reach a
+“fully developed” size for that wind and grow no more. A breeze down the length of a strait raises a real
+sea; the same breeze across a narrow channel raises only ripples.</p>
+<p>That is why the map computes fetch <b>directionally</b>: at every water cell it looks upwind and
+measures how far open water runs before it hits land, separately for <b>16 compass directions</b>. When
+the forecast wind blows from a given direction, the map uses the fetch in <i>that</i> direction — so the
+same wind speed produces very different seas depending only on which way it blows.</p>
+<figure id="fig1"></figure>
+
+<h2>3 · How the wave height (H<sub>s</sub>) and period (T<sub>p</sub>) are derived</h2>
+<p>The map uses the standard <b>fetch-limited growth laws</b> — the JONSWAP field-experiment fit
+(Hasselmann et al., 1973) — capped at the <b>Pierson–Moskowitz</b> fully-developed sea (Pierson &amp;
+Moskowitz, 1964). With wind speed <span class="var">U</span> (m/s), fetch <span class="var">F</span> (m)
+and gravity <span class="var">g</span> = 9.81 m/s²:</p>
+<span class="eq"><span class="var">H</span><sub>s</sub> = 4·<span class="var">U</span>·√( 1.6×10⁻⁷ · <span class="var">F</span> ⁄ <span class="var">g</span> )
+  &nbsp;&nbsp;<span class="cap">significant wave height — grows with wind, and with the square-root of fetch</span></span>
+<span class="eq"><span class="var">T</span><sub>p</sub> = 1 ⁄ [ 3.5·(<span class="var">g</span>⁄<span class="var">U</span>)·(<span class="var">gF</span>⁄<span class="var">U</span>²)<sup>−0.33</sup> ]
+  &nbsp;&nbsp;<span class="cap">peak period — longer fetch gives longer, faster waves</span></span>
+<span class="eq"><span class="var">H</span><sub>s</sub> ≤ 0.24·<span class="var">U</span>²⁄<span class="var">g</span> &nbsp;,&nbsp;
+  <span class="var">T</span><sub>p</sub> ≤ 0.72·<span class="var">U</span>
+  &nbsp;&nbsp;<span class="cap">fully-developed ceilings (Pierson–Moskowitz) — the flat tops in the chart above</span></span>
+<p>The subtle point: <b>height and period both rise with fetch, but the period rises faster.</b> A longer
+fetch makes waves taller <i>and</i> longer — and longer waves are less steep and harder for a current to
+trip. So a bigger sea is not automatically a rougher one, as §5 shows.</p>
+
+<h2>4 · How an opposing current steepens — and blocks — the sea</h2>
+<p>A deep-water wave travels at a speed set by its period, and carries a length to match:</p>
+<span class="eq"><span class="var">c</span>₀ = <span class="var">g</span>·<span class="var">T</span><sub>p</sub> ⁄ 2π &nbsp;(wave speed)&nbsp;,&nbsp;
+  <span class="var">L</span>₀ = <span class="var">c</span>₀·<span class="var">T</span><sub>p</sub> (wavelength)
+  &nbsp;&nbsp;<span class="cap">initial steepness S₀ = H<sub>s</sub> ⁄ L₀</span></span>
+<p>Only the part of the current pointing <i>into</i> the waves matters. With <span class="var">θ</span> the
+angle between the current’s set and the direction the wind blows from,</p>
+<span class="eq"><span class="var">U</span><sub>opp</sub> = <span class="var">V</span><sub>current</sub>·cos <span class="var">θ</span>
+  &nbsp;&nbsp;<span class="cap">head-on is fully opposing; a cross-current barely counts; a following current does nothing</span></span>
+<p>A wave riding onto an opposing current keeps its period but is forced to slow and <b>shorten</b>;
+conserving its wave-action it grows <b>taller</b> (Longuet-Higgins &amp; Stewart, 1961; Phillips, 1977).
+Both effects raise steepness. Writing <span class="var">α</span> = −<span class="var">U</span><sub>opp</sub> ⁄ <span class="var">c</span>₀
+and the shortening factor <span class="var">x</span> = <span class="var">k</span>₀ ⁄ <span class="var">k</span>
+from the wave-on-current dispersion relation, the steepness climbs as</p>
+<span class="eq"><span class="var">S</span> ≈ ( <span class="var">x</span><sup>3.5</sup> ⁄ √(2−<span class="var">x</span>) )·<span class="var">S</span>₀</span>
+<p>When the opposing current reaches <b>a quarter of the wave speed</b> the waves can no longer advance;
+they stop, pile up and break. This is the classic wave-blocking limit (Chawla &amp; Kirby, 2002):</p>
+<span class="eq"><span class="var">U</span><sub>opp</sub> ≥ <span class="var">c</span>₀ ⁄ 4
+  &nbsp;&nbsp;<span class="cap">short (slow) waves have a low c₀, so they block at a modest current — the reason short-fetch chop is dangerous</span></span>
+<figure id="fig2"></figure>
+
+<h2>5 · Worked example — small shifts, big change</h2>
+<p>Same 15-knot wind at one spot beside a channel. The wind <b>veers about 25°</b> so that instead of
+blowing along the channel it blows across it — the upwind fetch drops from 16 km to 8 km — and at the
+same time the ebb <b>strengthens from 1.0 to 1.2 knots</b> against the waves. Neither change is large:</p>
+<table class="wex" id="wex"></table>
+<p id="exNote"></p>
+
+<h2>6 · The open question: from steepness to <i>force</i></h2>
+<p>Steepness tells you a wave is likely to break and stack up — but a paddler feels a <b>force</b>. Two
+physically grounded quantities scale that force, and both rise fast with height:</p>
+<span class="eq">Energy density&nbsp; <span class="var">E</span> = ⅛·ρ·<span class="var">g</span>·<span class="var">H</span>²
+  &nbsp;&nbsp;<span class="cap">energy per unit sea-surface area — scales with the square of height</span></span>
+<span class="eq">Energy flux (power)&nbsp; <span class="var">P</span> = <span class="var">E</span>·<span class="var">c</span><sub>g</sub> ∝ <span class="var">H</span>²·<span class="var">T</span>
+  &nbsp;&nbsp;<span class="cap">rate energy is delivered — rises with height squared AND period (group speed c<sub>g</sub> = gT/4π)</span></span>
+<p>So a wave twice as high carries roughly <b>four times</b> the energy, and a longer period delivers it
+faster — which is the grain of truth in the instructor’s “force scales sharply with height and period.”
+The peak <b>impact</b> of a breaking or near-breaking wave on a hull is harder: it depends on the
+water-particle velocity at the crest (itself ∝ steepness × celerity) and on slamming dynamics studied in
+coastal engineering (Goda, 2000; Cuomo et al., 2010). Building a defensible, literature-validated
+<b>force/energy index</b> — and an interactive graph of how wind direction, fetch and current move both
+steepness and that index together — is the next step. This document will grow to cover it.</p>
+
+<div class="callout"><b>Status.</b> The steepness layer is experimental and <b>not yet ground-truthed</b>.
+These notes are for understanding and refining the model before it is shown publicly. The force index in
+§6 is not yet in the map.</div>
+
+<h2>References</h2>
+<ol class="refs">
+  <li>Michell, J. H. (1893). The highest waves in water. <i>Phil. Mag.</i> 36, 430–437.</li>
+  <li>Pierson, W. J., &amp; Moskowitz, L. (1964). A proposed spectral form for fully developed wind seas. <i>J. Geophys. Res.</i> 69, 5181–5190.</li>
+  <li>Hasselmann, K., et al. (1973). Measurements of wind-wave growth and swell decay (JONSWAP). <i>Dtsch. Hydrogr. Z.</i> Suppl. A8.</li>
+  <li>Longuet-Higgins, M. S., &amp; Stewart, R. W. (1961). The changes in amplitude of short gravity waves on steady non-uniform currents. <i>J. Fluid Mech.</i> 10, 529–549.</li>
+  <li>Phillips, O. M. (1977). <i>The Dynamics of the Upper Ocean</i> (2nd ed.). Cambridge Univ. Press.</li>
+  <li>Chawla, A., &amp; Kirby, J. T. (2002). Monochromatic and random wave breaking at blocking points. <i>J. Geophys. Res.</i> 107(C7).</li>
+  <li>Goda, Y. (2000). <i>Random Seas and Design of Maritime Structures</i> (2nd ed.). World Scientific.</li>
+  <li>Cuomo, G., Allsop, W., Bruce, T., &amp; Pearson, J. (2010). Breaking wave loads at vertical seawalls and breakwaters. <i>Coastal Engineering</i> 57, 424–439.</li>
+</ol>
+
+<p class="foot">Companion to the Unified Marine Map. Data: NOAA/NOS SSCOFS Salish Sea currents ·
+ECCC HRDPS 2.5 km wind. Model heuristic — advisory only, not for navigation.</p>
+
+<script>
+const G=9.81;
+function windSea(U,F){ if(U<0.5||F<500) return {Hs:0,Tp:0};
+  const Hs_f=4.0*U*Math.sqrt(1.6e-7*F/G), X=G*F/(U*U), Tp_f=1/(3.5*(G/U)*Math.pow(X,-0.33));
+  return {Hs:Math.min(Hs_f,0.24*U*U/G),Tp:Math.min(Tp_f,0.72*U)}; }
+const KT=0.514444;
+function hazBand(Hs,Tp,cur){ const c0=G*Tp/(2*Math.PI), Uopp=cur*KT, alpha=-Uopp/c0, disc=1+4*alpha, S0=Hs/(c0*Tp);
+  if(alpha<0&&disc<=0) return {band:4,S:0.2}; const x=Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha);
+  const S=Math.pow(x,3.5)/Math.sqrt(Math.max(2-x,1e-6))*S0;
+  return {band:(!isFinite(S)||S>=0.143)?4:S>=0.10?3:S>=0.075?2:S>=0.05?1:0,S}; }
+function steepAt(Hs,Tp,cur){ const c0=G*Tp/(2*Math.PI), Uopp=cur*KT, alpha=-Uopp/c0, disc=1+4*alpha;
+  if(alpha<0&&disc<=0) return 0.2; const x=Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha);
+  return Math.pow(x,3.5)/Math.sqrt(Math.max(2-x,1e-6))*(Hs/(c0*Tp)); }
+function chartSVG(cfg){
+  const w=440,h=260,P={l:56,r:14,t:14,b:46}, iw=w-P.l-P.r, ih=h-P.t-P.b;
+  const X=x=>P.l+(x-cfg.xmin)/(cfg.xmax-cfg.xmin)*iw, Y=y=>P.t+ih-(y-cfg.ymin)/(cfg.ymax-cfg.ymin)*ih;
+  let g=`<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif" font-size="11">`;
+  g+=`<line x1="${P.l}" y1="${P.t}" x2="${P.l}" y2="${P.t+ih}" stroke="#98a2b3"/><line x1="${P.l}" y1="${P.t+ih}" x2="${P.l+iw}" y2="${P.t+ih}" stroke="#98a2b3"/>`;
+  for(const t of cfg.xticks){ const x=X(t); g+=`<line x1="${x}" y1="${P.t+ih}" x2="${x}" y2="${P.t+ih+4}" stroke="#98a2b3"/><text x="${x}" y="${P.t+ih+16}" text-anchor="middle" fill="#667085">${t}</text>`; }
+  for(const t of cfg.yticks){ const y=Y(t); g+=`<line x1="${P.l-4}" y1="${y}" x2="${P.l}" y2="${y}" stroke="#98a2b3"/><text x="${P.l-7}" y="${y+3}" text-anchor="end" fill="#667085">${t}</text>`; }
+  g+=`<text x="${P.l+iw/2}" y="${h-6}" text-anchor="middle" fill="#1b2430">${cfg.xlabel}</text>`;
+  g+=`<text transform="translate(14,${P.t+ih/2}) rotate(-90)" text-anchor="middle" fill="#1b2430">${cfg.ylabel}</text>`;
+  for(const hl of (cfg.hlines||[])){ const y=Y(hl.y); g+=`<line x1="${P.l}" y1="${y}" x2="${P.l+iw}" y2="${y}" stroke="${hl.color}" stroke-dasharray="3 3"/><text x="${P.l+3}" y="${y-2}" fill="${hl.color}">${hl.label}</text>`; }
+  for(const v of (cfg.vlines||[])){ const x=X(v.x); g+=`<line x1="${x}" y1="${P.t}" x2="${x}" y2="${P.t+ih}" stroke="${v.color}" stroke-dasharray="2 3"/><text x="${x-3}" y="${P.t+10}" text-anchor="end" fill="${v.color}">${v.label}</text>`; }
+  for(const s of cfg.series){ let d=""; s.pts.forEach((p,i)=>{ d+=(i?"L":"M")+X(p[0]).toFixed(1)+" "+Y(p[1]).toFixed(1); });
+    g+=`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2.2"/>`;
+    if(s.label){ const lp=s.pts[s.pts.length-1]; g+=`<text x="${X(lp[0])-3}" y="${Y(lp[1])-5}" text-anchor="end" fill="${s.color}" font-weight="700">${s.label}</text>`; } }
+  return g+`</svg>`;
+}
+// Chart 1
+const winds=[[5.14,"10 kt","#3288bd"],[7.72,"15 kt","#e8590c"],[10.29,"20 kt","#8e1c6b"]];
+document.getElementById("fig1").innerHTML=chartSVG({xmin:0,xmax:60,ymin:0,ymax:2.6,xlabel:"fetch — open water upwind (km)",ylabel:"wave height Hs (m)",
+  xticks:[0,20,40,60],yticks:[0,0.5,1,1.5,2,2.5],series:winds.map(([u,lab,col])=>{const pts=[];for(let F=0;F<=60;F+=1)pts.push([F,windSea(u,F*1000).Hs]);return{color:col,label:lab,pts};})})
+  +'<figcaption>Wave height vs fetch, from the map’s growth formula. Each curve flattens at its fully-developed ceiling.</figcaption>';
+// Chart 2
+const exHs=0.35,exTp=2.41,c0ex=G*exTp/(2*Math.PI),blockKt=c0ex/4/KT, c2=[];
+for(let cur=0;cur<=blockKt*0.985;cur+=blockKt/70) c2.push([cur,Math.min(0.16,steepAt(exHs,exTp,cur))]);
+const RC=["#5b7186","#f2b705","#e8590c","#8e1c6b"];
+document.getElementById("fig2").innerHTML=chartSVG({xmin:0,xmax:blockKt,ymin:0,ymax:0.16,xlabel:"opposing current (kt)",ylabel:"steepness  Hs ÷ wavelength",
+  xticks:[0,0.5,1,1.5],yticks:[0,0.05,0.10,0.15],series:[{color:"#0a3d62",pts:c2}],
+  hlines:[{y:0.05,color:RC[0],label:"mild"},{y:0.075,color:RC[1],label:"caution"},{y:0.10,color:RC[2],label:"rough"},{y:0.143,color:RC[3],label:"breaking"}],
+  vlines:[{x:blockKt,color:"#7a1616",label:"blocking"}]})
+  +'<figcaption>Steepness of the example sea (0.35 m @ 2.4 s) as an opposing current builds — it runs away toward breaking as the current nears the blocking speed.</figcaption>';
+// Worked-example table
+const RING=[null,{col:"#5b7186"},{col:"#f2b705"},{col:"#e8590c"},{col:"#8e1c6b"}], WORD=["none","mild","caution","rough","hazardous"];
+const ex=(F,cur)=>{const ws=windSea(7.72,F*1000),c0=G*ws.Tp/(2*Math.PI),bk=c0/4/KT,b=hazBand(ws.Hs,ws.Tp,cur);return{Hs:ws.Hs,Tp:ws.Tp,cur,bk,pct:Math.round(cur/bk*100),S:b.S,band:b.band};};
+const A=ex(16,1.0),B=ex(8,1.2);
+const pill=b=>`<span class="pill" style="background:${b<1?'#9fb3c8':RING[Math.min(b,4)].col}">${WORD[Math.min(b,4)]}</span>`;
+const rw=(l,f)=>`<tr><th>${l}</th><td class="n">${f(A)}</td><td class="n">${f(B)}</td></tr>`;
+document.getElementById("wex").innerHTML=
+  `<tr><th></th><th>A · along-channel</th><th>B · across-channel</th></tr>`
+ +rw("Wind",()=>"15 kt")+rw("Fetch upwind",a=>a===A?"16 km":"8 km")
+ +rw("Wave height H<sub>s</sub>",a=>a.Hs.toFixed(2)+" m")+rw("Wave period T<sub>p</sub>",a=>a.Tp.toFixed(1)+" s")
+ +rw("Opposing current",a=>a.cur.toFixed(1)+" kt")+rw("Blocking current (c₀⁄4)",a=>a.bk.toFixed(1)+" kt")
+ +rw("Current ÷ blocking",a=>a.pct+" %")+rw("Steepness S",a=>a.S.toFixed(3))
+ +`<tr><th>Result</th><td>${pill(A.band)}</td><td>${pill(B.band)}</td></tr>`;
+document.getElementById("exNote").innerHTML=`The across-channel waves are actually <b>smaller</b> (${B.Hs.toFixed(2)} m vs ${A.Hs.toFixed(2)} m) — yet the map flags them far worse. Being shorter and slower, they block at a lower current, and the modest extra ebb pushes them from ${A.pct}% to ${B.pct}% of that limit. The hazard is not the wave size; it is <b>how steep the wind and current together make it</b>.`;
+</script>
+</body>
+</html>

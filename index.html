@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unified Marine Map — currents · wind · steepness (WebGL)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  :root{ --ink:#1b2430; --muted:#667085; --bg:#f5f7fa; --line:#e3e8ef; }
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink);line-height:1.45}
+  header{background:#0a3d62;color:#fff;padding:16px 22px}
+  header h1{margin:0;font-size:20px} header p{margin:4px 0 0;font-size:13px;opacity:.92}
+  main{max-width:1060px;margin:0 auto;padding:18px}
+  .bar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+  .fld{display:flex;flex-direction:column;gap:3px}
+  .fld label{font-size:12px;color:var(--muted);font-weight:600}
+  select{font:inherit;border:1px solid #d7dde6;border-radius:8px;padding:9px 10px}
+  select option:disabled{color:#aab2bd}
+  button{font:inherit;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer}
+  #mode{font-weight:600}
+  #opacity{width:130px;margin:9px 0} #opacityVal{color:var(--ink);font-weight:700}
+  .timewrap{display:flex;flex-direction:column;gap:4px;flex:1 1 320px;min-width:260px}
+  .timewrap .row{display:flex;align-items:center;gap:8px} #time{flex:1} #timeLabel{font-weight:700;font-size:13px;min-width:150px}
+  #map{height:640px;border:1px solid var(--line);border-radius:12px;position:relative}
+  /* stacking is owned by the "fields" pane (z 450); within it, DOM order puts arrows over the fill */
+  .ovl{position:absolute;top:0;left:0;pointer-events:none}
+  .legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center}
+  .lchip{display:flex;align-items:center;gap:6px;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;background:#fff}
+  .lsw{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.15)}
+  .status{font-size:13px;color:var(--muted);margin-top:10px} .status.err{color:#b54708}
+  .note{font-size:12px;color:var(--muted);margin-top:10px}
+  .chk{flex-direction:row;align-items:center;gap:6px;padding-bottom:9px}
+  .chk input{width:16px;height:16px} .chk label{color:var(--ink)}
+  /* hover readout */
+  #tip{position:fixed;z-index:9999;pointer-events:none;display:none;max-width:250px;
+       background:rgba(17,24,32,.94);color:#fff;font-size:12px;line-height:1.5;
+       padding:8px 10px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+  #tip b{color:#fff} #tip .k{color:#9fb3c8} #tip .hz{font-weight:700}
+  /* explanation / call-for-observations */
+  details.about{margin-top:14px;border:1px solid var(--line);border-radius:10px;background:#fff}
+  details.about>summary{cursor:pointer;padding:11px 14px;font-weight:600;font-size:13px;list-style:none}
+  details.about>summary::-webkit-details-marker{display:none}
+  details.about>summary::before{content:"▸ ";color:var(--muted)}
+  details.about[open]>summary::before{content:"▾ "}
+  details.about .body{padding:2px 16px 16px;font-size:13px;color:#333;line-height:1.55}
+  details.about .body h4{margin:16px 0 5px;font-size:13px}
+  details.about .body p{margin:7px 0}
+  .callout{margin-top:14px;border:1px dashed #b0863a;background:#fdf7ec;border-radius:8px;padding:12px 14px}
+  .callout h4{margin:0 0 6px;color:#8a5a12}
+  .callout textarea{width:100%;min-height:150px;margin-top:8px;font:inherit;font-size:12px;
+       border:1px solid var(--line);border-radius:6px;padding:8px;resize:vertical;background:#fff}
+  .callout button{margin-top:6px}
+  details.about .body h4{color:#0a3d62}
+  .eq{display:block;background:#f5f7fa;border:1px solid var(--line);border-radius:6px;
+      padding:9px 12px;margin:9px 0;font-size:14px;overflow-x:auto;
+      font-family:"Cambria Math",Georgia,"Times New Roman",serif}
+  .eq .var{font-style:italic}
+  .eq .cap{color:var(--muted);font-style:normal;font-size:12px;font-family:inherit}
+  .chartwrap{display:flex;flex-wrap:wrap;gap:18px;margin:10px 0}
+  .chartwrap figure{margin:0;flex:1 1 300px;min-width:280px}
+  .chartwrap figcaption{font-size:12px;color:var(--muted);margin-top:4px}
+  .chartwrap svg{max-width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:8px}
+  table.wex{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+  table.wex th,table.wex td{border:1px solid var(--line);padding:6px 9px;text-align:left}
+  table.wex th{background:#f0f4f8} table.wex td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .bandpill{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;font-weight:700;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Unified Marine Map — currents · wind · steepness</h1>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>steepness risk</b>. <span style="opacity:.7">build 2026-07-10f (currents+wind public; steepness experimental behind ?steep=1)</span></p>
+</header>
+<main>
+  <div class="bar">
+    <div class="fld"><label for="mode">Layer</label>
+      <select id="mode">
+        <option value="current" selected>Currents (SSCOFS)</option>
+        <option value="wind">Wind (HRDPS 2.5 km)</option>
+        <option value="steep">Steepness risk (wind vs current)</option>
+      </select></div>
+    <div class="fld" id="steepStyleFld" style="display:none"><label for="steepStyle">Steep display</label>
+      <select id="steepStyle"><option value="rings" selected>Rings on wind</option><option value="fill">Shaded cells</option></select></div>
+    <div class="fld"><label for="region">Region</label><select id="region"></select></div>
+    <div class="fld"><label for="base">Base map</label><select id="base"></select></div>
+    <div class="fld"><label for="arrows">Arrows</label>
+      <select id="arrows"><option value="0">Off</option><option value="26">Normal</option><option value="18" selected>Dense</option><option value="12">Denser</option></select></div>
+    <div class="fld chk" id="windArrowsFld" style="display:none">
+      <input type="checkbox" id="windArrows"><label for="windArrows">Wind arrows</label></div>
+    <div class="fld"><label for="opacity">Fill opacity <span id="opacityVal"></span></label>
+      <!-- step 0.01: both mode defaults (0.72, 0.85) must be exactly representable or the thumb
+           snaps to a neighbouring step and jumps on the first drag -->
+      <input type="range" id="opacity" min="0.2" max="1" step="0.01" title="Opacity of the coloured fill; the legend swatches follow it"></div>
+    <div class="timewrap"><label for="time" id="timeCap">Forecast timeline</label>
+      <div class="row"><button id="playBtn">▶</button><input type="range" id="time" min="0" max="48" value="0"><span id="timeLabel"></span></div>
+    </div>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div id="map"></div>
+  <p class="status" id="status">Loading…</p>
+  <p class="note" id="note"></p>
+  <details class="about" id="about">
+    <summary>How the steepness estimate works — and how you can help check it</summary>
+    <div class="body" id="aboutBody"></div>
+  </details>
+</main>
+<div id="tip"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const R2="https://pub-cb8eb71f75d64a57a0d021318ccd0ae7.r2.dev";
+const $=id=>document.getElementById(id);
+// Steepness is EXPERIMENTAL and hidden by default so the validated currents + wind layers can ship
+// publicly on their own. The author reveals the steepness layer + physics panel with ?steep=1 while
+// it is still being checked against real observations.
+const STEEP_ON = new URLSearchParams(location.search).get("steep")==="1";
+// [name, center, zoom, key, bbox W,S,E,N] — bboxes MUST match hrdps-ingest/sscofs_mesh.py REGIONS.
+// Order = element ownership priority inside the 0.05° overlaps (earlier region draws, later skips),
+// so translucent neighbours never double-blend into a dark seam.
+const REGIONS=[
+  ["Puget Sound",[47.30,-122.55],11,"puget-sound",[-123.3,47.0,-122.2,48.4]],
+  ["San Juan & Gulf Islands",[48.60,-123.1],10,"san-juan-gulf-islands",[-123.95,48.3,-122.5,49.3]],
+  ["Northern Georgia Strait",[49.6,-124.4],10,"northern-georgia-strait",[-125.4,49.0,-123.4,50.2]],
+  ["Juan de Fuca",[48.35,-124.35],10,"juan-de-fuca",[-125.3,48.0,-123.25,48.75]],
+  ["Broughtons & Discovery",[50.45,-125.9],10,"broughtons-discovery",[-127.6,50.15,-124.3,51.2]],
+  ["Johnstone Str → QCS",[50.95,-127.7],10,"johnstone-qcs-south",[-129.0,50.7,-126.3,52.13]],
+];
+const MESH_ZOOM=10;                         // >= this: native mesh tiles; below: whole-coast overview
+const FULL_EXTENT=[[47.0,-128.8],[51.6,-122.2]];
+const DRY=-1000;                            // sentinel written into the GL speed buffer; always discarded
+
+// ---- Currents: kt bins (byte/10), arrows point the way the water goes (TOWARD) ----
+const CUR_EDGES=[1,2,3,4,5,7,9];
+const CUR_COL=["#3288bd","#66c2a5","#abdda4","#a6d96a","#fee08b","#fdae61","#f46d43","#d53e4f"];
+const CUR_LBL=["0–1","1–2","2–3","3–4","4–5","5–7","7–9","9+"];
+// ---- Wind: Beaufort km/h bins (byte = km/h), arrows point DOWNWIND (byte dir is FROM) ----
+// Edges/colours/names copied verbatim from hrdps_map.html so the two apps read identically.
+const W_EDGES=[1,6,12,20,29,39,50,62,75,89,103,118];
+const W_COL=["#dfeaf2","#bfe3ec","#a6dd9f","#d7e84f","#f3c44d","#f0893b","#e44f2c","#c71d2b","#9a2240","#6b2a5a","#4a2370","#2c1a55","#14102e"];
+const W_NAMES=["Calm","Light air","Light breeze","Gentle","Moderate","Fresh","Strong","Near gale","Gale","Strong gale","Storm","Violent storm","Hurricane"];
+const kt = k => Math.round(k/1.852);
+
+/* ---- Steepness risk: wind-against-current, DERIVED from the wind + current fields ----
+   This is a hazard heuristic, NOT a wave model or a wave-height forecast. At each current-overview
+   water cell we estimate the local wind-sea from the wind speed and the cell's COMPUTED DIRECTIONAL
+   FETCH (upwind open-water distance in the wind's sector — there is no wave field), then apply the
+   wind map's validated wave-action steepening (hazBand) against the local current. It is only shown
+   in PROTECTED waters — see STEEP_ZONES — because fetch-limited growth cannot represent ocean swell,
+   which dominates the open outer coast.
+   Threshold-only: bands 0–1 (negligible / mild) are left UNPAINTED so the map stays quiet; only
+   caution/rough/hazardous shade. Colours escalate amber→orange→magenta (CVD-safe: no green, and not
+   a red/green pair), deliberately unlike the current & wind ramps so the layer can't be mistaken. */
+const STEEP_COL=["#f2b705","#e8590c","#8e1c6b"];        // band 2 caution, 3 rough, 4 hazardous/breaking
+const STEEP_LBL=["Caution — steepening chop","Rough — steep, short seas","Hazardous — breaking / near-blocking"];
+const STEEP_SUB=["wind against current builds a short, stacked sea","confused steep water; avoid in a loaded boat","wave blocking: standing, breaking seas"];
+// "Rings on wind" display: a hazard RING (colour+weight by band) with a cyan current dot+arrow, drawn
+// over the full wind fill — the original wind-map station format. Indexed by band 0..4; band 2/3/4
+// reuse STEEP_COL so the two displays share a palette. band ≤0 draws no ring (wind shows through).
+const RING=[null,                                       // 0 negligible → no ring
+  {col:"#5b7186",lw:2.0,a:0.55,r:8.5},                  // 1 mild
+  {col:STEEP_COL[0],lw:3.5,a:0.95,r:10},               // 2 caution
+  {col:STEEP_COL[1],lw:4.5,a:0.96,r:11.5},             // 3 rough
+  {col:STEEP_COL[2],lw:6.0,a:0.98,r:13}];              // 4 hazardous / breaking
+const RING_LBL=["","Mild — slight steepening","Caution — steepening chop","Rough — steep, short seas","Hazardous — breaking / blocking"];
+const RING_WORD=["none","mild","caution","rough","hazardous"];
+const G=9.81, KT_MS=0.514444;
+// Directional fetch (David 2026-07-10): each steepness cell gets its own upwind open-water distance
+// per 16 compass sectors, ray-marched on the current-overview water mask at tile build. A NW blow
+// down 60 km of strait and the same wind over a 2 km cove no longer produce the same sea. Capped at
+// 60 km: past that the fully-developed (PM) cap governs growth anyway, and beyond-fetch seas mean
+// swell — which this layer does not model (the zones already exclude swell-exposed coast).
+const FETCH_SECTORS=16, FETCH_CAP_KM=60;
+// Capped fetch-limited wind sea (JONSWAP growth capped at the Pierson–Moskowitz fully-developed sea):
+// returns {Hs m, Tp s} for wind U in m/s over fetch F in m. Short fetch ⇒ low, short-period chop —
+// which is exactly the sea that a current steepens fastest, so short-fetch cells still warn when the
+// current is strong, just at higher winds than long-fetch ones.
+function windSea(U,F){
+  if(U<0.5||F<500) return {Hs:0,Tp:0};
+  const Hs_f=4.0*U*Math.sqrt(1.6e-7*F/G);
+  const X=G*F/(U*U), Tp_f=1.0/(3.5*(G/U)*Math.pow(X,-0.33));
+  return { Hs:Math.min(Hs_f, 0.24*U*U/G), Tp:Math.min(Tp_f, 0.72*U) };
+}
+// Verbatim port of hrdps_map.html hazBand: -1 = negligible sea; 0..4 = steepness band.
+// dirFrom = wind FROM bearing (deg); curKt/curToward = current speed (kt) & TOWARD bearing (deg).
+function hazBand(Hs,Tp,dirFrom,curKt,curToward){
+  if(!(Hs>0.05)||!(Tp>0)) return -1;
+  const c0=G*Tp/(2*Math.PI);
+  const Uopp=Math.abs(curKt)*KT_MS*Math.cos((curToward-dirFrom)*Math.PI/180);   // >0 = opposing
+  const L0=c0*Tp, S0=Hs/L0, alpha=-Uopp/c0, disc=1+4*alpha;
+  let band, hf;
+  if(alpha<0 && disc<=0){ band=4; hf=2.5; }             // beyond blocking → breaking
+  else { const x=Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha);
+    hf=Math.min(Math.pow(x,1.5)/Math.sqrt(Math.max(2-x,1e-6)),2.5);
+    const S=Math.pow(x,3.5)/Math.sqrt(Math.max(2-x,1e-6))*S0;
+    band=(!isFinite(S)||S>=0.143)?4 : S>=0.10?3 : S>=0.075?2 : S>=0.05?1 : 0; }
+  const Hamp=Hs*hf;                                       // consequence gate: a tiny sea can't be high-risk
+  if(Hamp<0.3) band=Math.min(band,1); else if(Hamp<0.5) band=Math.min(band,2);
+  return band;
+}
+// Protected, fetch-limited waters where the steepness estimate is justifiable (tunable after David's
+// validation). Deliberately EXCLUDES the outer WCVI coast, open Queen Charlotte Sound / Hecate, and
+// the swell-exposed western entrance of Juan de Fuca; INCLUDES the channel thresholds that are the
+// validation targets (Goletas/Nahwitti, Cattle Pass). [W,S,E,N]
+const STEEP_ZONES=[
+  [-123.30,47.00,-122.20,48.35],   // Puget Sound / Hood Canal / Admiralty
+  [-123.65,48.05,-122.70,48.55],   // E Juan de Fuca (Victoria→Pt Townsend; W of Race is swell-exposed)
+  [-123.95,48.30,-122.50,49.30],   // San Juan & Gulf Islands
+  [-125.25,48.90,-122.90,50.15],   // Strait of Georgia
+  [-127.20,49.90,-124.20,51.05],   // Discovery Passage / Desolation / Broughtons
+  [-128.15,50.35,-125.80,51.10],   // Johnstone Str + Queen Charlotte Str (incl Goletas / Nahwitti Bar)
+];
+const inSteepZone=(lo,la)=>STEEP_ZONES.some(b=>lo>=b[0]&&lo<=b[2]&&la>=b[1]&&la<=b[3]);
+
+const BASE_WATER="#c9e2ee";            // approx. USGS base-map water, so the currents legend matches
+const GRAY_LAND="#f0efef";             // approx. Esri light-gray canvas, for the wind legend
+const hex2rgb=h=>[parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255];
+function blend(hex,overHex,a){ const c=hex2rgb(hex), w=hex2rgb(overHex);
+  const m=k=>Math.round(255*(c[k]*a + w[k]*(1-a))); return `rgb(${m(0)},${m(1)},${m(2)})`; }
+
+const BASES={
+  usgs:{name:"USGS topo",url:"https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}",attr:"USGS The National Map"},
+  topo:{name:"Esri terrain",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri"},
+  imagery:{name:"Satellite",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri"},
+  gray:{name:"Plain coastline",url:"https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri"},
+};
+const LABELS_URL="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
+
+/* ---------- Modes ----------
+   A mode only changes: which tiles draw, the colour ramp/alpha/discard threshold pushed to the
+   shader, the arrow convention, and the base map. The Leaflet view is never touched, so flipping
+   layers keeps the exact same coordinates — the whole point of the app. */
+const MODES={
+  current:{ label:"Currents", edges:CUR_EDGES, cols:CUR_COL, alpha:0.85,
+            // <1 kt is left unshaded so the terrain base reads through (and DRY discards)
+            minDraw:1.0, unit:"kt", base:"usgs", labels:false, arrowFlip:0, arrowMin:0.2,
+            legendOver:BASE_WATER, mesh:true },
+  // alpha defaults to 0.72 (the Fill opacity slider overrides it): the Esri reference layer carries
+  // place names but NOT the shoreline, so the fill must stay sheer enough for the gray canvas's land
+  // to read through. Above ~0.8 the coast vanishes under the fill.
+  wind:{    label:"Wind", edges:W_EDGES, cols:W_COL, alpha:0.72,
+            // paint every valid cell incl. F0 calm (matches hrdps_map.html); only DRY discards
+            minDraw:-1.0, unit:"km/h", base:"gray", labels:true, arrowFlip:180, arrowMin:1.0,
+            legendOver:GRAY_LAND, mesh:false },
+  // Derived hazard layer. The GL "speed" fed per cell is the BAND (2/3/4); edges map band→colour and
+  // minDraw=1.5 discards bands ≤1, giving threshold-only shading. Arrows (if on) show current SET, so
+  // a paddler sees which way the steep water is running. alpha 0.85: sparse, so it can sit opaque.
+  steep:{   label:"Steepness", edges:[2.5,3.5], cols:STEEP_COL, alpha:0.85,
+            minDraw:1.5, unit:"band", base:"gray", labels:true, arrowFlip:0, arrowMin:0.3,
+            legendOver:GRAY_LAND, mesh:false, ringsAlpha:0.5 },   // ringsAlpha = wind-fill opacity in "rings" display
+};
+let mode="current";
+// Steepness has two displays: "rings" (hazard rings + current arrows over the full wind field — the
+// original wind-map format) and "fill" (hazard-shaded cells over a plain coastline). Toggled in-mode.
+let steepStyle="rings";
+// In "rings", GL paints the WIND field (its ramp) and the overlay draws the rings; "fill" paints the
+// band ramp. glMode() picks the ramp; alphaRef() picks which opacity the slider/URL control.
+const glMode=()=> (mode==="steep"&&steepStyle==="rings") ? MODES.wind : MODES[mode];
+const alphaRef=()=> (mode==="steep"&&steepStyle==="rings") ? [MODES.steep,"ringsAlpha"] : [MODES[mode],"alpha"];
+const getAlpha=()=>{ const [o,k]=alphaRef(); return o[k]; };
+const setActiveAlpha=v=>{ const [o,k]=alphaRef(); o[k]=clampAlpha(v); };
+
+const PTL=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Vancouver',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false});
+
+// zoomAnimation off keeps the WebGL overlay perfectly registered with the tiles
+// Lock the view to the model: can't zoom out past the SSCOFS extent or pan off it.
+const map=L.map("map",{zoomAnimation:false,fadeAnimation:false,
+  maxBounds:L.latLngBounds(FULL_EXTENT).pad(0.12),maxBoundsViscosity:1.0}).fitBounds(FULL_EXTENT);
+map.setMinZoom(map.getZoom());
+/* Overlay stacking. The GL/arrow canvases must live INSIDE mapPane, in a pane of their own:
+   mapPane carries a transform, so it is a stacking context, and anything parented to it (a labels
+   pane, however high its z-index) can never rise above a canvas that is mapPane's sibling in the
+   container. Panes it is — then "labels" at 460 genuinely draws over the field at 450.
+   The cost: mapPane is translated as you pan, so the canvases must be re-pinned to the viewport
+   every frame (syncOverlayPos), because they are drawn in container coordinates. */
+for(const [p,z] of [["fields",450],["labels",460]]){
+  map.createPane(p); const el=map.getPane(p); el.style.zIndex=z; el.style.pointerEvents="none";
+}
+let baseLayer=null, labelLayer=null;
+function setBase(key){
+  if(baseLayer) map.removeLayer(baseLayer);
+  const b=BASES[key]; baseLayer=L.tileLayer(b.url,{maxZoom:16,attribution:b.attr}).addTo(map);
+  const want=MODES[mode].labels;
+  if(want && !labelLayer) labelLayer=L.tileLayer(LABELS_URL,{maxZoom:16,pane:"labels"}).addTo(map);
+  if(!want && labelLayer){ map.removeLayer(labelLayer); labelLayer=null; }
+}
+// two overlay canvases in the "fields" pane: WebGL (speed) + 2D (arrows, drawn over it)
+const cont=map.getPane("fields");
+const glc=document.createElement("canvas"); glc.className="ovl"; cont.appendChild(glc);
+const arc=document.createElement("canvas"); arc.className="ovl"; cont.appendChild(arc);
+// Both canvases are drawn in CONTAINER pixels, but sit in the (translated) mapPane. Re-pin them to
+// the viewport's top-left in layer coordinates each frame so the field stays registered with tiles.
+function syncOverlayPos(){
+  const tl=map.containerPointToLayerPoint([0,0]);
+  L.DomUtil.setPosition(glc,tl); L.DomUtil.setPosition(arc,tl);
+}
+
+/* ---------- WebGL: speed-coloured triangles ----------
+   Vertices are pre-projected to Leaflet pixel space at a reference zoom Z0 (minus a local
+   origin for float precision). Per frame the shader maps them to the container:
+     container = (aPos - uTopLeft) * uScale
+   The ramp is uniform-driven (13 colours / 12 edges max), so currents (8 bins) and Beaufort
+   (13 bins) share one shader; unused edges are padded to 9999 (mediump-safe) and never fire. */
+const Z0=12, CRS=L.CRS.EPSG3857;
+const VS=`attribute vec2 aPos; attribute float aSpeed; uniform vec2 uTopLeft; uniform float uScale; uniform vec2 uSize; varying float vSpeed;
+void main(){ vec2 c=(aPos-uTopLeft)*uScale; gl_Position=vec4(c.x/uSize.x*2.0-1.0, 1.0-c.y/uSize.y*2.0, 0.0, 1.0); vSpeed=aSpeed; }`;
+const FS=`precision mediump float; varying float vSpeed; uniform vec3 uCols[13]; uniform float uEdges[12]; uniform float uAlpha; uniform float uMinDraw;
+void main(){ if(vSpeed<uMinDraw) discard; int bin=0; for(int i=0;i<12;i++){ if(vSpeed>=uEdges[i]) bin=i+1; }
+  vec3 c=uCols[12]; for(int i=0;i<13;i++){ if(i==bin) c=uCols[i]; } gl_FragColor=vec4(c,uAlpha); }`;
+let gl=null, prog=null, loc={};
+const tiles={};        // mesh region key -> tile (currents, zoomed in)
+let overview=null;     // SSCOFS whole-coast current overview
+let windTile=null;     // HRDPS whole-extent wind overview
+function initGL(){
+  // premultipliedAlpha MUST stay true (default): SRC_ALPHA blending onto a transparent clear
+  // already stores premultiplied RGB. Declaring it false makes the browser multiply by alpha a
+  // SECOND time when compositing over the tiles — which darkens every bin and collapses the key.
+  const OPTS={alpha:true,antialias:true};
+  gl=glc.getContext("webgl",OPTS) || glc.getContext("webgl2",OPTS);
+  if(!gl){ setStatus("WebGL unavailable in this browser.",true); return false; }
+  const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);
+    if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(o); return o;};
+  prog=gl.createProgram(); gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS)); gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw gl.getProgramInfoLog(prog);
+  gl.useProgram(prog);
+  loc.aPos=gl.getAttribLocation(prog,"aPos"); loc.aSpeed=gl.getAttribLocation(prog,"aSpeed");
+  loc.uTopLeft=gl.getUniformLocation(prog,"uTopLeft"); loc.uScale=gl.getUniformLocation(prog,"uScale"); loc.uSize=gl.getUniformLocation(prog,"uSize");
+  loc.uCols=gl.getUniformLocation(prog,"uCols"); loc.uEdges=gl.getUniformLocation(prog,"uEdges");
+  loc.uAlpha=gl.getUniformLocation(prog,"uAlpha"); loc.uMinDraw=gl.getUniformLocation(prog,"uMinDraw");
+  // Separate alpha blending: plain blendFunc scales the ALPHA channel by SRC_ALPHA too, leaving
+  // alpha=a² while RGB is premultiplied at a. The browser then composites a buffer whose colour and
+  // coverage disagree, pulling every speed bin off its legend colour.
+  gl.enable(gl.BLEND);
+  gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA, gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+  gl.clearColor(0,0,0,0);
+  applyModeGL();
+  return true;
+}
+function applyModeGL(){
+  if(!gl) return; const m=glMode();          // ramp source (wind's, when steep+rings)
+  const cols=new Float32Array(39);
+  for(let i=0;i<13;i++){ const c=hex2rgb(m.cols[Math.min(i,m.cols.length-1)]);
+    cols[i*3]=c[0]; cols[i*3+1]=c[1]; cols[i*3+2]=c[2]; }
+  const edges=new Float32Array(12).fill(9999);   // 9999 (not 1e9): mediump floats top out at 65504
+  m.edges.forEach((e,i)=>edges[i]=e);
+  gl.useProgram(prog);
+  gl.uniform3fv(loc.uCols,cols); gl.uniform1fv(loc.uEdges,edges);
+  gl.uniform1f(loc.uAlpha,getAlpha()); gl.uniform1f(loc.uMinDraw,m.minDraw);
+}
+function tileOrigin(bbox){ return CRS.latLngToPoint(L.latLng((bbox[1]+bbox[3])/2,(bbox[0]+bbox[2])/2),Z0); }
+function buildMeshBuffers(t,nodes,tris){
+  t.ref=tileOrigin(t.bbox);                                     // local origin (float32 precision)
+  const px=new Float64Array(nodes.length), py=new Float64Array(nodes.length);
+  for(let i=0;i<nodes.length;i++){ const p=CRS.latLngToPoint(L.latLng(nodes[i][1],nodes[i][0]),Z0); px[i]=p.x-t.ref.x; py[i]=p.y-t.ref.y; }
+  const pos=new Float32Array(t.ne*3*2); let k=0;
+  t.vtx=new Uint32Array(t.ne*3);                                // node id per vertex, for smoothing
+  for(let i=0;i<t.ne;i++){ const tr=tris[i]; for(let j=0;j<3;j++){ const n=tr[j];
+    t.vtx[i*3+j]=n; pos[k++]=px[n]; pos[k++]=py[n]; } }
+  t.posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,t.posBuf); gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
+  t.spdBuf=gl.createBuffer(); t.spd3=new Float32Array(t.ne*3);
+  t.nSum=new Float32Array(nodes.length); t.nCnt=new Float32Array(nodes.length); t.nVal=new Float32Array(nodes.length);
+}
+// Build the GL quad buffer for a regular lat/lon field tile (two triangles per cell, row 0 = north).
+// Cell size comes from bbox+cols+rows, NOT manifest res_deg: res_deg is the model's nominal spacing,
+// while the tile's actual step is (E-W)/(cols-1). They differ for the wind overview (0.02251 vs
+// 0.0225) and the drift would smear the field ~180 m at the east edge.
+function buildFieldQuads(t,cols,rows,lut){
+  const [W,S,E,N]=t.bbox, stepLon=(E-W)/(cols-1), stepLat=(N-S)/(rows-1);
+  t.ref=tileOrigin(t.bbox);
+  const pos=new Float32Array(t.ne*6*2); let k=0;
+  for(let m=0;m<t.ne;m++){ const cell=lut?lut[m]:m, r=(cell/cols)|0, c=cell%cols;
+    const lon=W+c*stepLon, lat=N-r*stepLat; t.cx[m]=lon; t.cy[m]=lat;
+    const p1=CRS.latLngToPoint(L.latLng(lat+stepLat/2,lon-stepLon/2),Z0);
+    const p2=CRS.latLngToPoint(L.latLng(lat-stepLat/2,lon+stepLon/2),Z0);
+    const x1=p1.x-t.ref.x,y1=p1.y-t.ref.y,x2=p2.x-t.ref.x,y2=p2.y-t.ref.y;
+    pos[k++]=x1;pos[k++]=y1; pos[k++]=x2;pos[k++]=y1; pos[k++]=x2;pos[k++]=y2;
+    pos[k++]=x1;pos[k++]=y1; pos[k++]=x2;pos[k++]=y2; pos[k++]=x1;pos[k++]=y2; }
+  t.posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,t.posBuf); gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
+  t.spdBuf=gl.createBuffer();
+}
+// Which tiles draw right now. Currents: native mesh zoomed in, whole-coast overview zoomed out
+// (and while a mesh tile is still downloading). Wind: one whole-extent tile at every zoom.
+const isect=(b,x)=>b.getWest()<x[2]&&b.getEast()>x[0]&&b.getSouth()<x[3]&&b.getNorth()>x[1];
+function activeTiles(){
+  // steep "rings" paints the wind field (rings drawn separately in drawSteepRings); "fill" paints bands
+  if(mode==="steep") return steepStyle==="rings"
+    ? (windTile&&windTile.ready?[windTile]:[])
+    : (steepTile&&steepTile.ready?[steepTile]:[]);
+  if(mode==="wind") return windTile&&windTile.ready?[windTile]:[];
+  if(map.getZoom()>=MESH_ZOOM){
+    const b=map.getBounds();
+    const ready=REGIONS.filter(r=>isect(b,r[4])).map(r=>tiles[r[3]]).filter(t=>t&&t.ready);
+    if(ready.length) return ready;
+  }
+  return overview&&overview.ready?[overview]:[];
+}
+function drawGL(){
+  const size=map.getSize(), dpr=window.devicePixelRatio||1;
+  glc.width=size.x*dpr; glc.height=size.y*dpr; glc.style.width=size.x+"px"; glc.style.height=size.y+"px";
+  if(!gl) return; gl.viewport(0,0,glc.width,glc.height); gl.clear(gl.COLOR_BUFFER_BIT);
+  const acts=activeTiles(); if(!acts.length) return;
+  const z=map.getZoom(), scale=Math.pow(2,z-Z0);
+  const tlLL=map.containerPointToLatLng([0,0]); const tl=CRS.latLngToPoint(tlLL,Z0);
+  gl.useProgram(prog);
+  gl.uniform1f(loc.uScale, scale);
+  gl.uniform2f(loc.uSize, size.x, size.y);
+  for(const t of acts){
+    decodeTile(t);
+    gl.uniform2f(loc.uTopLeft, tl.x-t.ref.x, tl.y-t.ref.y);
+    gl.bindBuffer(gl.ARRAY_BUFFER,t.posBuf); gl.enableVertexAttribArray(loc.aPos); gl.vertexAttribPointer(loc.aPos,2,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,t.spdBuf); gl.enableVertexAttribArray(loc.aSpeed); gl.vertexAttribPointer(loc.aSpeed,1,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.TRIANGLES,0,t.ne*t.vpe);
+  }
+}
+function drawArrows(){
+  const size=map.getSize(), dpr=window.devicePixelRatio||1;
+  arc.width=size.x*dpr; arc.height=size.y*dpr; arc.style.width=size.x+"px"; arc.style.height=size.y+"px";
+  const ctx=arc.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
+  const tp=+$("arrows").value; if(!tp) return;
+  const md=MODES[mode];
+  const b=map.getBounds(), W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth();
+  const seen=new Set(), L2=Math.max(4,Math.min(12,tp*0.42));
+  ctx.strokeStyle="rgba(20,20,30,.92)"; ctx.fillStyle="rgba(20,20,30,.92)"; ctx.lineWidth=1.1;
+  for(const t of activeTiles()){
+    decodeTile(t);
+    for(let i=0;i<t.ne;i++){
+      const lo=t.cx[i], la=t.cy[i]; if(lo<W||lo>E||la<S||la>N) continue;
+      const s=t.spd[i]; if(isNaN(s)||s<md.arrowMin) continue;
+      if(t.arrowGate && t.arrowGate[i]<2) continue;      // steepness: arrows only in shaded (band≥2) water
+      const p=map.latLngToContainerPoint([la,lo]);
+      const key=((p.x/tp)|0)*99999+((p.y/tp)|0); if(seen.has(key)) continue; seen.add(key);
+      // Currents store TOWARD; wind stores FROM. arrowFlip turns both into "where it's going".
+      const tw=(t.dir[i]+md.arrowFlip)*Math.PI/180, dx=Math.sin(tw), dy=-Math.cos(tw), x2=p.x+dx*L2, y2=p.y+dy*L2;
+      ctx.beginPath(); ctx.moveTo(p.x-dx*L2,p.y-dy*L2); ctx.lineTo(x2,y2); ctx.stroke();
+      const a1=tw+2.5,a2=tw-2.5,hs=L2*0.5;
+      ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(x2+Math.sin(a1)*hs,y2-Math.cos(a1)*hs); ctx.lineTo(x2+Math.sin(a2)*hs,y2-Math.cos(a2)*hs); ctx.closePath(); ctx.fill();
+    }
+  }
+}
+function render(){ syncOverlayPos(); drawGL();
+  if(mode==="steep"&&steepStyle==="rings") drawSteepRings(); else drawArrows(); }
+/* "Rings on wind": over the full wind fill, at a decimated set of protected-water cells, draw a
+   hazard ring (colour+weight by band) with a cyan current dot+arrow — the original wind-map format.
+   Only cells with band ≥ 1 draw (where wind is steepening the current), so slack water stays clear
+   and the wind pattern shows through. Within each screen bucket the WORST band wins, so decimation
+   never hides the more dangerous cell. The Arrows control sets ring spacing; "Off" hides the current
+   arrows but keeps the rings + dots. */
+function drawSteepRings(){
+  const size=map.getSize(), dpr=window.devicePixelRatio||1;
+  arc.width=size.x*dpr; arc.height=size.y*dpr; arc.style.width=size.x+"px"; arc.style.height=size.y+"px";
+  const ctx=arc.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
+  if(!steepTile||!steepTile.ready) return;
+  if($("windArrows").checked) drawWindArrowsOn(ctx);      // white wind barbs UNDER the rings
+  decodeTile(steepTile);
+  const t=steepTile, b=map.getBounds(), W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth();
+  const tp=+$("arrows").value, spacing=tp?Math.max(tp*2.4,42):50, showArrows=tp>0;
+  const buck=new Map();
+  for(let i=0;i<t.ne;i++){
+    const band=t.band[i]; if(band<1) continue;
+    const lo=t.cx[i], la=t.cy[i]; if(lo<W||lo>E||la<S||la>N) continue;
+    const p=map.latLngToContainerPoint([la,lo]);
+    const key=((p.x/spacing)|0)*99999+((p.y/spacing)|0);
+    const cur=buck.get(key);
+    if(!cur||band>cur.band||(band===cur.band&&t.spd[i]>cur.spd)) buck.set(key,{i,band,spd:t.spd[i],p});
+  }
+  for(const {i,band,spd,p} of buck.values()){
+    const rs=RING[band];
+    ctx.globalAlpha=rs.a; ctx.strokeStyle=rs.col; ctx.lineWidth=rs.lw;
+    ctx.beginPath(); ctx.arc(p.x,p.y,rs.r,0,7); ctx.stroke(); ctx.globalAlpha=1;
+    ctx.beginPath(); ctx.arc(p.x,p.y,3.1,0,7); ctx.fillStyle="#00b4d8"; ctx.fill();
+    ctx.strokeStyle="#023047"; ctx.lineWidth=1.4; ctx.stroke();
+    if(showArrows && spd>=0.15){
+      const dir=t.dir[i]*Math.PI/180, dx=Math.sin(dir), dy=-Math.cos(dir);
+      const Ln=Math.max(9,Math.min(34,spd*13)), x2=p.x+dx*Ln, y2=p.y+dy*Ln;
+      ctx.strokeStyle="#00b4d8"; ctx.lineWidth=2.6;
+      ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(x2,y2); ctx.stroke();
+      const a1=dir+2.6,a2=dir-2.6,hs=7; ctx.fillStyle="#00b4d8";
+      ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(x2+Math.sin(a1)*hs,y2-Math.cos(a1)*hs); ctx.lineTo(x2+Math.sin(a2)*hs,y2-Math.cos(a2)*hs); ctx.closePath(); ctx.fill();
+    }
+  }
+}
+// White downwind arrows over the whole wind field (steep+rings, toggled by the Wind arrows box), so
+// wind DIRECTION reads directly, not only via the fill colour. Dark halo keeps them legible on pale fill.
+function drawWindArrowsOn(ctx){
+  if(!windTile||!windTile.ready) return;
+  decodeTile(windTile);
+  const t=windTile, b=map.getBounds(), W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth();
+  const spacing=40, seen=new Set(), L=6.5;
+  for(let i=0;i<t.ne;i++){
+    const s=t.spd[i]; if(isNaN(s)||s<6) continue;         // km/h; skip near-calm
+    const lo=t.cx[i], la=t.cy[i]; if(lo<W||lo>E||la<S||la>N) continue;
+    const p=map.latLngToContainerPoint([la,lo]);
+    const key=((p.x/spacing)|0)*99999+((p.y/spacing)|0); if(seen.has(key)) continue; seen.add(key);
+    const tw=(t.dir[i]+180)*Math.PI/180, dx=Math.sin(tw), dy=-Math.cos(tw);
+    const x1=p.x-dx*L, y1=p.y-dy*L, x2=p.x+dx*L, y2=p.y+dy*L;
+    ctx.lineWidth=3.2; ctx.strokeStyle="rgba(20,30,45,.5)";
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.lineWidth=1.5; ctx.strokeStyle="rgba(255,255,255,.96)";
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    const a1=tw+2.6,a2=tw-2.6,hs=4.4; ctx.fillStyle="rgba(255,255,255,.96)";
+    ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(x2+Math.sin(a1)*hs,y2-Math.cos(a1)*hs); ctx.lineTo(x2+Math.sin(a2)*hs,y2-Math.cos(a2)*hs); ctx.closePath(); ctx.fill();
+  }
+}
+map.on("move zoomend resize",render);
+
+/* ---------- hover / tap readout ----------
+   Point at the map to read the model at that spot: steepness (band + wind, current, wind-sea, fetch),
+   wind (speed/Beaufort/direction), or current (speed/set), per the active layer. Coalesced to one
+   animation frame per move so brute-force nearest-cell stays cheap. Tap does the same on touch. */
+const tip=$("tip");
+const COMPASS=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const compass=d=>COMPASS[Math.round(((d%360)+360)%360/22.5)%16];
+const beauF=kmh=>{ let f=0; while(f<W_EDGES.length && kmh>=W_EDGES[f]) f++; return f; };
+function row(k,v){ return `<div><span class="k">${k}:</span> ${v}</div>`; }
+function nearestCell(t,lat,lon,maxDeg){
+  let best=-1, bd=maxDeg*maxDeg, cosm=Math.cos(lat*Math.PI/180);
+  for(let i=0;i<t.ne;i++){ const dlo=(t.cx[i]-lon)*cosm, dla=t.cy[i]-lat, d=dlo*dlo+dla*dla;
+    if(d<bd){ bd=d; best=i; } }
+  return best;
+}
+let hoverLL=null, hoverEv=null, hoverRAF=0;
+function onHover(e){ hoverLL=e.latlng; hoverEv=e.originalEvent; if(!hoverRAF) hoverRAF=requestAnimationFrame(doHover); }
+function hideTip(){ hoverLL=null; tip.style.display="none"; }
+function doHover(){
+  hoverRAF=0; if(!hoverLL) return;
+  const lat=hoverLL.lat, lon=hoverLL.lng; let html=null;
+  if(mode==="steep" && steepTile&&steepTile.ready){
+    decodeTile(steepTile); const t=steepTile, m=nearestCell(t,lat,lon,0.06);
+    if(m>=0 && t.wKt[m]===t.wKt[m]){                        // wet cell (not NaN)
+      const band=Math.max(0,t.band[m]|0), col=band<1?"#9fb3c8":RING[Math.min(band,4)].col;
+      html=`<b>Steepness — ${RING_WORD[Math.min(band,4)]}</b>`
+        +`<div class="hz" style="color:${col}">${band<1?"No steepening (calm / following sea)":RING_LBL[Math.min(band,4)]}</div>`
+        +row("Wind", `${Math.round(t.wKt[m])} kt from ${compass(t.wFrom[m])} (${Math.round(t.wFrom[m])}°)`)
+        +row("Current", t.spd[m]>=0.1?`${t.spd[m].toFixed(1)} kt toward ${compass(t.dir[m])} (${Math.round(t.dir[m])}°)`:"slack (&lt;0.1 kt)")
+        +row("Wind-sea", t.Hs[m]>0.05?`${t.Hs[m].toFixed(1)} m @ ${t.Tp[m].toFixed(1)} s`:"negligible")
+        +row("Fetch", `${t.fUse[m]>=60?"≥60":t.fUse[m].toFixed(0)} km upwind`);
+    }
+  } else if(mode==="wind" && windTile&&windTile.ready){
+    decodeTile(windTile); const t=windTile, m=nearestCell(t,lat,lon,0.06);
+    if(m>=0 && !isNaN(t.spd[m])){
+      html=`<b>Wind</b>`
+        +row("Speed", `${Math.round(t.spd[m])} km/h · ${Math.round(t.spd[m]/1.852)} kt · F${beauF(t.spd[m])}`)
+        +row("From", `${compass(t.dir[m])} (${Math.round(t.dir[m])}°)`);
+    }
+  } else if(mode==="current"){
+    let best=-1,bt=null,bd=0.05*0.05, cosm=Math.cos(lat*Math.PI/180);
+    for(const t of activeTiles()){ decodeTile(t);
+      for(let i=0;i<t.ne;i++){ const s=t.spd[i]; if(isNaN(s)) continue;
+        const dlo=(t.cx[i]-lon)*cosm, dla=t.cy[i]-lat, d=dlo*dlo+dla*dla;
+        if(d<bd){ bd=d; best=i; bt=t; } } }
+    if(best>=0) html=`<b>Current</b>`
+      +row("Speed", `${bt.spd[best].toFixed(1)} kt`)
+      +row("Set", `toward ${compass(bt.dir[best])} (${Math.round(bt.dir[best])}°)`);
+  }
+  if(!html){ tip.style.display="none"; return; }
+  tip.innerHTML=html; tip.style.display="block";
+  const pad=14, ev=hoverEv, tw=tip.offsetWidth, th=tip.offsetHeight;
+  let x=ev.clientX+pad, y=ev.clientY+pad;
+  if(x+tw>innerWidth-6) x=ev.clientX-pad-tw;
+  if(y+th>innerHeight-6) y=ev.clientY-pad-th;
+  tip.style.left=Math.max(4,x)+"px"; tip.style.top=Math.max(4,y)+"px";
+}
+map.on("mousemove",onHover);
+map.on("mouseout",hideTip);
+map.on("click",onHover);            // tap readout on touch devices
+map.on("movestart zoomstart",hideTip);
+
+let meshMan=null, fieldMan=null, windMan=null, hour=0, TIMES=[], anim=null;
+let RUN_CUR=null, RUN_WIND=null, windDisabled=false;
+async function gunzip(u8){ const ds=new DecompressionStream('gzip'); return new Uint8Array(await new Response(new Response(u8).body.pipeThrough(ds)).arrayBuffer()); }
+
+/* ---------- hour alignment ----------
+   SSCOFS and HRDPS run on different cycles (03Z vs 06Z today), so their hour axes are OFFSET and
+   have different spans. TIMES is the INTERSECTION of every loaded dataset's hour instants, in
+   epoch ms — so every slider position has real data in every layer, and steepness (step 3) can
+   assume both fields exist at the selected instant. Each tile maps a master index into its own
+   hour index by exact ms lookup; no nearest-hour fuzz, no silent clamping. */
+const inter=(a,b)=>{ const s=new Set(b); return a.filter(x=>s.has(x)); };
+function makeHourOf(hoursMs){
+  const m=new Map(hoursMs.map((v,i)=>[v,i]));
+  return h=>{ const i=m.get(TIMES[h]);
+    if(i===undefined) throw new Error("hour "+new Date(TIMES[h]).toISOString()+" missing from tile axis");
+    return i; };
+}
+const isoToMs=s=>new Date(s).getTime();
+
+function loadedSummary(){
+  const parts=Object.values(tiles).filter(t=>t.ready).map(t=>t.key);
+  const age=r=>Math.round((Date.now()-new Date(r).getTime())/3.6e6);
+  if(mode==="wind")
+    return `HRDPS 2.5 km wind · run ${PTL.format(new Date(RUN_WIND))} (${age(RUN_WIND)} h ago) · whole extent`;
+  if(mode==="steep")
+    return `Steepness risk · wind ${PTL.format(new Date(RUN_WIND))} × current ${PTL.format(new Date(RUN_CUR))} · protected waters`;
+  return `SSCOFS currents over terrain · run ${PTL.format(new Date(RUN_CUR))} (${age(RUN_CUR)} h ago) · overview${parts.length?" + "+parts.join(", "):""}`;
+}
+// Decode one tile's current hour into spd/dir (arrows) + spd3 (GL). Lazy + cached per hour.
+// spdScale converts the speed byte to the mode's unit: currents kt = byte/10, wind km/h = byte.
+// Ownership: elements inside an earlier region's bbox are skipped (spd=NaN) so overlapping
+// translucent tiles never double-blend; the owning neighbour is always loaded for any view
+// that can see the overlap, because loading is viewport-driven with the same bboxes.
+function decodeTile(t){
+  const hi=t.hourOf(hour);
+  if(t.decodedHour===hi) return; t.decodedHour=hi;
+  if(t.decodeSteep){ t.decodeSteep();      // derived layer: reads current + wind, writes band into spd3
+    if(gl){ gl.bindBuffer(gl.ARRAY_BUFFER,t.spdBuf); gl.bufferData(gl.ARRAY_BUFFER,t.spd3,gl.DYNAMIC_DRAW); }
+    return; }
+  const n=t.ne, span=t.span, vel=t.vel, lut=t.lut, own=t.own, vpe=t.vpe, sc=t.spdScale;
+  const sBase=hi*2*span, dBase=sBase+span;
+  for(let i=0;i<n;i++){ const j=lut?lut[i]:i; const s=vel[sBase+j];
+    const skip=(s===255)||(own&&!own[i]);
+    t.spd[i]=skip?NaN:s*sc; t.dir[i]=vel[dBase+j]*360/255; }
+  if(t.vtx){
+    // Smooth fill (native mesh): the model gives ONE speed per triangle, which reads as flat
+    // jagged facets in the narrows. Average element speeds onto the shared nodes and let the
+    // GPU interpolate; binning happens per-fragment AFTER interpolation, so the map still shows
+    // exactly the legend colours — bin edges just become iso-speed contours, not triangle edges.
+    // Dry/unowned triangles write DRY at all 3 corners so they stay discarded (never painted).
+    // Arrows keep the exact per-element values; only the paint is smoothed.
+    const nS=t.nSum, nC=t.nCnt, nV=t.nVal, vtx=t.vtx;
+    nS.fill(0); nC.fill(0);
+    for(let i=0;i<n;i++){ const s=t.spd[i]; if(s!==s) continue;
+      const b=i*3; nS[vtx[b]]+=s; nC[vtx[b]]++; nS[vtx[b+1]]+=s; nC[vtx[b+1]]++; nS[vtx[b+2]]+=s; nC[vtx[b+2]]++; }
+    for(let j2=0;j2<nV.length;j2++) nV[j2]=nC[j2]?nS[j2]/nC[j2]:0;
+    for(let i=0;i<n;i++){ const b=i*3;
+      if(t.spd[i]!==t.spd[i]){ t.spd3[b]=DRY; t.spd3[b+1]=DRY; t.spd3[b+2]=DRY; }
+      else { t.spd3[b]=nV[vtx[b]]; t.spd3[b+1]=nV[vtx[b+1]]; t.spd3[b+2]=nV[vtx[b+2]]; } }
+  } else {
+    for(let i=0;i<n;i++){ const s=t.spd[i], v=(s!==s)?DRY:s, b=i*vpe; for(let k=0;k<vpe;k++) t.spd3[b+k]=v; }
+  }
+  if(gl){ gl.bindBuffer(gl.ARRAY_BUFFER,t.spdBuf); gl.bufferData(gl.ARRAY_BUFFER,t.spd3,gl.DYNAMIC_DRAW); }
+}
+async function ensureTile(key){
+  if(tiles[key]) return; const reg=REGIONS.find(r=>r[3]===key);
+  const t=tiles[key]={key,bbox:reg[4],vpe:3,ready:false,decodedHour:-1,spdScale:0.1};
+  const rm=meshMan.regions[key];
+  setStatus("Loading "+reg[0]+" mesh ("+rm.n_elem.toLocaleString()+" elements, ~"+(rm.n_elem*2*49/2.5e6).toFixed(1)+" MB)…");
+  try{
+    const [mj,vb]=await Promise.all([
+      // n_elem versions the URL: geometry changes (bbox edits) bust the force-cache automatically
+      fetch(R2+"/sscofs/"+rm.mesh+"?v="+rm.n_elem,{cache:"force-cache"}).then(r=>r.json()),
+      fetch(R2+"/sscofs/meshvel/"+rm.file,{cache:"no-store"}).then(r=>r.arrayBuffer())
+    ]);
+    const nodes=mj.nodes, tris=mj.tris, ne=tris.length;
+    t.ne=ne; t.span=ne; t.cx=new Float32Array(ne); t.cy=new Float32Array(ne);
+    t.hourOf=makeHourOf(meshMan.hours);
+    for(let i=0;i<ne;i++){ const tr=tris[i];
+      t.cx[i]=(nodes[tr[0]][0]+nodes[tr[1]][0]+nodes[tr[2]][0])/3; t.cy[i]=(nodes[tr[0]][1]+nodes[tr[1]][1]+nodes[tr[2]][1])/3; }
+    let bytes=new Uint8Array(vb); if(bytes[0]===0x1f&&bytes[1]===0x8b) bytes=await gunzip(bytes);
+    t.vel=bytes; t.spd=new Float32Array(ne); t.dir=new Float32Array(ne);
+    const earlier=REGIONS.slice(0,REGIONS.findIndex(r=>r[3]===key)).map(r=>r[4]);
+    if(earlier.length){ t.own=new Uint8Array(ne);
+      for(let i=0;i<ne;i++){ const lo=t.cx[i],la=t.cy[i];
+        t.own[i]=earlier.some(x=>lo>=x[0]&&lo<=x[2]&&la>=x[1]&&la<=x[3])?0:1; } }
+    buildMeshBuffers(t,nodes,tris);
+    t.ready=true; render(); setStatus(loadedSummary());
+  }catch(e){ delete tiles[key]; setStatus("Failed to load "+key+": "+e.message,true); }
+}
+let overviewLoading=null;
+const loadOverview=()=>overviewLoading||(overviewLoading=loadOverviewOnce());
+async function loadOverviewOnce(){
+  setStatus("Loading whole-coast current overview (~1.7 MB)…");
+  const vb=await fetch(R2+"/sscofs/field/overview.bin",{cache:"no-store"}).then(r=>r.arrayBuffer());
+  const ov=fieldMan.regions.overview, cols=ov.cols, rows=ov.rows;
+  const span=cols*rows, nh=fieldMan.hours.length;
+  let bytes=new Uint8Array(vb); if(bytes[0]===0x1f&&bytes[1]===0x8b) bytes=await gunzip(bytes);
+  const water=new Uint8Array(span);                     // water = valid in ANY hour (wet/dry cells)
+  for(let h=0;h<nh;h++){ const off=h*2*span; for(let i=0;i<span;i++) if(bytes[off+i]!==255) water[i]=1; }
+  const lut=[]; for(let i=0;i<span;i++) if(water[i]) lut.push(i);
+  const ne=lut.length;
+  const t={key:"overview",bbox:ov.bbox,vpe:6,ready:false,decodedHour:-1,ne,span,spdScale:0.1,
+           lut:Uint32Array.from(lut),vel:bytes,
+           cx:new Float32Array(ne),cy:new Float32Array(ne),
+           spd:new Float32Array(ne),dir:new Float32Array(ne),spd3:new Float32Array(ne*6)};
+  t.hourOf=makeHourOf(fieldMan.hours);
+  buildFieldQuads(t,cols,rows,lut);
+  t.ready=true; overview=t; render(); setStatus(loadedSummary());
+}
+let windLoading=null;
+const loadWind=()=>windLoading||(windLoading=loadWindOnce());   // 3.4 MB: never fetch it twice
+async function loadWindOnce(){
+  const ov=windMan.regions.overview;
+  if(!ov) throw new Error("no 'overview' region in the HRDPS manifest — run hrdps-ingest first");
+  setStatus("Loading HRDPS wind overview (~3.4 MB)…");
+  const vb=await fetch(R2+"/hrdps/overview.bin",{cache:"no-store"}).then(r=>r.arrayBuffer());
+  let bytes=new Uint8Array(vb); if(bytes[0]===0x1f&&bytes[1]===0x8b) bytes=await gunzip(bytes);
+  const cols=ov.cols, rows=ov.rows, span=cols*rows, nh=windMan.hours.length;
+  if(bytes.length!==nh*2*span) throw new Error(`wind tile is ${bytes.length} B, expected ${nh*2*span}`);
+  const ne=span;                                  // HRDPS covers land too: every cell is a quad
+  const t={key:"wind",bbox:ov.bbox,vpe:6,ready:false,decodedHour:-1,ne,span,spdScale:1,
+           vel:bytes,cx:new Float32Array(ne),cy:new Float32Array(ne),
+           spd:new Float32Array(ne),dir:new Float32Array(ne),spd3:new Float32Array(ne*6)};
+  t.hourOf=makeHourOf(windMan.hours.map(isoToMs));
+  buildFieldQuads(t,cols,rows,null);
+  t.ready=true; windTile=t; render(); setStatus(loadedSummary());
+}
+let steepTile=null, steepLoading=null;
+const loadSteep=()=>steepLoading||(steepLoading=loadSteepOnce());
+async function loadSteepOnce(){
+  // Derived: no fetch of its own. Needs BOTH fields resident (current field + wind field), built on
+  // the CURRENT overview grid at all zooms (a hazard advisory doesn't need mesh resolution), reduced
+  // to the protected-water cells so nothing draws outside the zones where the estimate is valid.
+  await Promise.all([loadOverview(), loadWind()]);
+  const oc=fieldMan.regions.overview, cols=oc.cols, rows=oc.rows;
+  const [oW,oS,oE,oN]=oc.bbox, oStepLon=(oE-oW)/(cols-1), oStepLat=(oN-oS)/(rows-1);
+  // steepness cells = overview water cells that lie in a protected zone
+  const cells=[]; for(let m=0;m<overview.ne;m++){ if(inSteepZone(overview.cx[m],overview.cy[m])) cells.push(m); }
+  const ne=cells.length;
+  // Directional fetch: for each cell and each of 16 sectors, march upwind (toward the sector
+  // bearing) across the water mask until land or the 60 km cap. Leaving the grid over water also
+  // caps: the extent edges inside zones are all long-fetch water, never a wall.
+  setStatus("Computing directional fetch ("+ne.toLocaleString()+" cells × "+FETCH_SECTORS+" sectors)…");
+  const span=cols*rows, mask=new Uint8Array(span);
+  for(let i=0;i<overview.ne;i++) mask[overview.lut[i]]=1;
+  const stepKm=oStepLat*111.32, maxSteps=Math.ceil(FETCH_CAP_KM/stepKm);
+  const fetchKm=new Float32Array(ne*FETCH_SECTORS);
+  for(let s=0;s<FETCH_SECTORS;s++){
+    const b=s*2*Math.PI/FETCH_SECTORS, dN=Math.cos(b), dE=Math.sin(b);
+    for(let m=0;m<ne;m++){
+      const oi=cells[m];
+      let la=overview.cy[oi], lo=overview.cx[oi], f=FETCH_CAP_KM;
+      for(let k2=1;k2<=maxSteps;k2++){
+        la+=dN*oStepLat; lo+=dE*oStepLat/Math.cos(la*Math.PI/180);
+        const rr=Math.round((oN-la)/oStepLat), cc=Math.round((lo-oW)/oStepLon);
+        if(rr<0||rr>=rows||cc<0||cc>=cols) break;               // off-grid over water → cap
+        if(!mask[rr*cols+cc]){ f=k2*stepKm; break; }            // hit land
+      }
+      fetchKm[m*FETCH_SECTORS+s]=f;
+    }
+  }
+  const t={key:"steep",bbox:oc.bbox,vpe:6,ready:false,decodedHour:-1,ne,
+           cx:new Float32Array(ne),cy:new Float32Array(ne),
+           spd:new Float32Array(ne),dir:new Float32Array(ne),spd3:new Float32Array(ne*6),
+           band:new Float32Array(ne),
+           // per-cell inputs kept for the hover readout (filled each hour in decodeSteep)
+           wKt:new Float32Array(ne),wFrom:new Float32Array(ne),Hs:new Float32Array(ne),
+           Tp:new Float32Array(ne),fUse:new Float32Array(ne)};
+  t.hourOf=h=>h;                        // decode depends on BOTH datasets; cache on the master hour
+  // Per steepness cell precompute: its index into the current overview water array (curCell) and its
+  // nearest wind-grid linear index (windCell). Cheap per-hour decode then just reads + runs hazBand.
+  const wc=windMan.regions.overview, wCols=wc.cols, wRows=wc.rows;
+  const [wW,wS,wE,wN]=wc.bbox, wStepLon=(wE-wW)/(wCols-1), wStepLat=(wN-wS)/(wRows-1);
+  const curCell=new Int32Array(ne), windCell=new Int32Array(ne);
+  // Build the quad geometry directly over the selected cells (row/col from the current grid index).
+  t.ref=tileOrigin(t.bbox);
+  const pos=new Float32Array(ne*6*2); let k=0;
+  for(let m=0;m<ne;m++){ const oi=cells[m];
+    const lo=overview.cx[oi], la=overview.cy[oi]; t.cx[m]=lo; t.cy[m]=la;
+    curCell[m]=oi;
+    let wj=Math.round((lo-wW)/wStepLon), wi=Math.round((wN-la)/wStepLat);
+    wj=Math.min(Math.max(wj,0),wCols-1); wi=Math.min(Math.max(wi,0),wRows-1);
+    windCell[m]=wi*wCols+wj;
+    const p1=CRS.latLngToPoint(L.latLng(la+oStepLat/2,lo-oStepLon/2),Z0);
+    const p2=CRS.latLngToPoint(L.latLng(la-oStepLat/2,lo+oStepLon/2),Z0);
+    const x1=p1.x-t.ref.x,y1=p1.y-t.ref.y,x2=p2.x-t.ref.x,y2=p2.y-t.ref.y;
+    pos[k++]=x1;pos[k++]=y1; pos[k++]=x2;pos[k++]=y1; pos[k++]=x2;pos[k++]=y2;
+    pos[k++]=x1;pos[k++]=y1; pos[k++]=x2;pos[k++]=y2; pos[k++]=x1;pos[k++]=y2; }
+  t.posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,t.posBuf); gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
+  t.spdBuf=gl.createBuffer();
+  const cSpan=cols*rows, wSpan=wCols*wRows;
+  t.decodeSteep=()=>{
+    const ci=overview.hourOf(hour), wi=windTile.hourOf(hour);      // each dataset's own hour index
+    const cS=ci*2*cSpan, wSb=wi*2*wSpan;
+    const cv=overview.vel, wv=windTile.vel;
+    for(let m=0;m<ne;m++){
+      const gi=overview.lut[curCell[m]], wcell=windCell[m];
+      const cByte=cv[cS+gi];
+      if(cByte===255){ t.band[m]=-1; t.spd[m]=NaN; t.wKt[m]=NaN; setQuad(t.spd3,m,DRY); continue; }
+      const curKt=cByte/10, curToward=cv[cS+cSpan+gi]*360/255;
+      const wByte=wv[wSb+wcell];                                    // wind covers land: never 255 here
+      const U=wByte/3.6, dirFrom=wv[wSb+wSpan+wcell]*360/255;        // km/h → m/s, FROM
+      // fetch = upwind open water in the wind's FROM sector (nearest of 16)
+      const sec=Math.round(dirFrom*FETCH_SECTORS/360)%FETCH_SECTORS;
+      const fkm=fetchKm[m*FETCH_SECTORS+sec];
+      const ws=windSea(U, fkm*1000);
+      const b=hazBand(ws.Hs,ws.Tp,dirFrom,curKt,curToward);
+      t.band[m]=b; t.spd[m]=curKt; t.dir[m]=curToward;              // arrows show current SET
+      t.wKt[m]=wByte/1.852; t.wFrom[m]=dirFrom; t.Hs[m]=ws.Hs; t.Tp[m]=ws.Tp; t.fUse[m]=fkm;
+      setQuad(t.spd3,m, b<1.5?DRY:b);                               // bands ≤1 discarded (threshold-only)
+    }
+  };
+  t.arrowGate=t.band;                    // draw arrows only where the water is actually shaded (band≥2)
+  t.fetchKm=fetchKm;                     // kept for hover readout / verification
+  t.ready=true; steepTile=t; render(); setStatus(loadedSummary());
+}
+function setQuad(a,m,v){ const b=m*6; a[b]=v;a[b+1]=v;a[b+2]=v;a[b+3]=v;a[b+4]=v;a[b+5]=v; }
+function updateTiles(){
+  if(!meshMan || !MODES[mode].mesh) return;
+  if(map.getZoom()>=MESH_ZOOM){
+    const b=map.getBounds();
+    for(const r of REGIONS) if(isect(b,r[4])) ensureTile(r[3]);
+  }
+}
+function setStatus(m,err){ const e=$("status"); e.textContent=m; e.className="status"+(err?" err":""); }
+
+// Beaufort colour chips at a given fill alpha. withNames = full (wind mode); compact = key only (rings).
+function beaufortKey(alpha,withNames){
+  let s="";
+  for(let f=0;f<=9;f++){
+    const ktl = f===0 ? "calm" : `${kt(W_EDGES[f-1])}${f<W_EDGES.length?"–"+kt(W_EDGES[f]-1):"+"} kt`;
+    const name = withNames ? " "+W_NAMES[f] : "";
+    s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[f],GRAY_LAND,alpha)}"></i>F${f}${name} · ${ktl}</span>`;
+  }
+  s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[10],GRAY_LAND,alpha)}"></i>F10+${withNames?" Storm":""}</span>`;
+  return s;
+}
+function buildLegend(){
+  const md=MODES[mode]; let s;
+  if(mode==="current"){
+    s='<span class="lchip" style="font-weight:600">Current speed (kt):</span>';
+    for(let f=0;f<CUR_COL.length;f++){
+      // Swatch = the colour as it actually appears on the water (blended at the fill alpha).
+      const sw = f===0 ? BASE_WATER : blend(CUR_COL[f],BASE_WATER,md.alpha);
+      const lbl = f===0 ? CUR_LBL[f]+" <span style='opacity:.6'>(unshaded)</span>" : CUR_LBL[f];
+      s+=`<span class="lchip"><i class="lsw" style="background:${sw}"></i>${lbl}</span>`; }
+  } else if(mode==="wind"){
+    s='<span class="lchip" style="font-weight:600">Wind (Beaufort):</span>'+beaufortKey(md.alpha,true);
+  } else if(steepStyle==="rings"){
+    // rings drawn as an open circle (coloured border); fill behind = wind (Beaufort)
+    s='<span class="lchip" style="font-weight:600">Steepness rings · fill = wind:</span>';
+    for(let bnd=1;bnd<=4;bnd++)
+      s+=`<span class="lchip"><i class="lsw" style="border:3px solid ${RING[bnd].col};background:transparent;border-radius:50%"></i>${RING_LBL[bnd]}</span>`;
+    s+=`<span class="lchip"><i class="lsw" style="border-radius:50%;background:#00b4d8;border-color:#023047"></i>current set (arrow)</span>`;
+    // With wind arrows on, decode the fill's wind-speed colours inline (Beaufort key at the fill alpha)
+    if($("windArrows").checked)
+      s+=`<span class="lchip" style="font-weight:600;margin-left:6px">Wind (Beaufort):</span>`+beaufortKey(getAlpha(),false);
+    else
+      s+=`<span class="lchip" style="opacity:.6">coloured fill = wind (Beaufort — see Wind layer)</span>`;
+  } else {
+    s='<span class="lchip" style="font-weight:600">Steepness (protected waters):</span>';
+    for(let i=0;i<STEEP_COL.length;i++)
+      s+=`<span class="lchip" title="${STEEP_SUB[i]}"><i class="lsw" style="background:${blend(STEEP_COL[i],GRAY_LAND,md.alpha)}"></i>${STEEP_LBL[i]}</span>`;
+    s+=`<span class="lchip" style="opacity:.6">calm / following seas: unshaded</span>`;
+  }
+  $("legend").innerHTML=s;
+}
+// Kayak-forum summary (David posts this to gather ground-truth). Kept in one place so the copy box
+// and any future share feature stay identical. [contact] is a placeholder David fills before posting.
+const FORUM_SUMMARY=
+`Free experimental "wave-steepness" map for BC & WA inside waters (Puget Sound to Queen Charlotte Strait) — looking for paddlers to sanity-check it.
+
+It combines NOAA's Salish Sea current model (SSCOFS) with Environment Canada's HRDPS 2.5 km wind forecast. For every patch of protected water it estimates the local wind-driven sea (from the wind speed and the open-water fetch upwind, worked out from the coastline for 16 wind directions), then checks whether the tidal current is running against that sea. Wind against current shortens and steepens waves — the classic tide-rip chop — so the map flags where and when that is likely, in four grades from mild to breaking. It updates hourly over ~2 days and you can scrub the timeline.
+
+It is a heuristic, NOT a wave forecast: no ocean swell, no wave build-up time, no shoaling over reefs. So I'd really value real-world checks. If you paddle a spot shown on the map:
+- Did the rough/steep zones match what you actually found (and the timing, on the ebb/flood)?
+- Any known nasty spots it MISSED, or calm water it wrongly flagged?
+- Roughly what wind and tide state were you in?
+
+Map: [link]   Reply here or email [contact]. Thanks — every report helps calibrate it.`;
+
+const NOTES={
+  current:"Covers Puget Sound → Queen Charlotte Sound (south edge — <b>Haida Gwaii is outside SSCOFS</b>). Zoomed out: whole-coast ~2 km overview; zoom in (≥ z10): native FVCOM mesh tiles (~40–90 m in narrows) load automatically for the water in view. Arrows show <b>set</b> (where the water goes). SSCOFS is a model — official CHS/NOAA predictions remain authoritative at the tightest narrows.",
+  wind:"HRDPS 2.5 km whole-extent field, one resolution at every zoom (there is no finer wind tile). Arrows point <b>downwind</b> (the model stores the direction the wind blows <i>from</i>). Wind is drawn over land as well as water; place names and coastline are drawn on top. Beaufort bins match the standalone wind map exactly.",
+  steep:"<b>Steepness risk</b> — a wind-against-current hazard heuristic, <b>not a wave forecast</b>. <b>Rings on wind</b> shows the full HRDPS wind field with a hazard ring + cyan current arrow wherever the current is steepening the sea; <b>Shaded cells</b> paints the bands over a plain coastline (switch with <b>Steep display</b>). Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>. <b>Full method and how to help check it: “How the steepness estimate works” below.</b>",
+};
+// Small SVG line-chart generator (self-contained, no libraries). Points are in data units.
+function chartSVG(cfg){
+  const w=cfg.w||340,h=cfg.h||210,P={l:46,r:12,t:12,b:38}, iw=w-P.l-P.r, ih=h-P.t-P.b;
+  const X=x=>P.l+(x-cfg.xmin)/(cfg.xmax-cfg.xmin)*iw, Y=y=>P.t+ih-(y-cfg.ymin)/(cfg.ymax-cfg.ymin)*ih;
+  let g=`<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif" font-size="10">`;
+  g+=`<line x1="${P.l}" y1="${P.t}" x2="${P.l}" y2="${P.t+ih}" stroke="#98a2b3"/><line x1="${P.l}" y1="${P.t+ih}" x2="${P.l+iw}" y2="${P.t+ih}" stroke="#98a2b3"/>`;
+  for(const t of cfg.xticks){ const x=X(t); g+=`<line x1="${x}" y1="${P.t+ih}" x2="${x}" y2="${P.t+ih+4}" stroke="#98a2b3"/><text x="${x}" y="${P.t+ih+15}" text-anchor="middle" fill="#667085">${t}</text>`; }
+  for(const t of cfg.yticks){ const y=Y(t); g+=`<line x1="${P.l-4}" y1="${y}" x2="${P.l}" y2="${y}" stroke="#98a2b3"/><text x="${P.l-7}" y="${y+3}" text-anchor="end" fill="#667085">${t}</text>`; }
+  g+=`<text x="${P.l+iw/2}" y="${h-4}" text-anchor="middle" fill="#1b2430">${cfg.xlabel}</text>`;
+  g+=`<text transform="translate(12,${P.t+ih/2}) rotate(-90)" text-anchor="middle" fill="#1b2430">${cfg.ylabel}</text>`;
+  for(const hl of (cfg.hlines||[])){ const y=Y(hl.y);
+    g+=`<line x1="${P.l}" y1="${y}" x2="${P.l+iw}" y2="${y}" stroke="${hl.color}" stroke-dasharray="3 3" opacity=".8"/>`;
+    if(hl.label) g+=`<text x="${P.l+3}" y="${y-2}" fill="${hl.color}">${hl.label}</text>`; }
+  for(const v of (cfg.vlines||[])){ const x=X(v.x);
+    g+=`<line x1="${x}" y1="${P.t}" x2="${x}" y2="${P.t+ih}" stroke="${v.color}" stroke-dasharray="2 3"/>`;
+    if(v.label) g+=`<text x="${x-3}" y="${P.t+9}" text-anchor="end" fill="${v.color}">${v.label}</text>`; }
+  for(const s of cfg.series){ let d=""; s.pts.forEach((p,i)=>{ d+=(i?"L":"M")+X(p[0]).toFixed(1)+" "+Y(p[1]).toFixed(1); });
+    g+=`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"/>`;
+    if(s.label){ const lp=s.pts[s.pts.length-1]; g+=`<text x="${X(lp[0])-3}" y="${Y(lp[1])-4}" text-anchor="end" fill="${s.color}" font-weight="700">${s.label}</text>`; } }
+  return g+`</svg>`;
+}
+// Physics explainer + call-for-observations, written for a non-physicist. Only built once.
+function buildAbout(){
+  // steepness S(H/L) as the opposing current grows, from the same wave-action math as hazBand()
+  const steepAt=(Hs,Tp,curKt)=>{ const c0=G*Tp/(2*Math.PI), Uopp=curKt*KT_MS, alpha=-Uopp/c0, disc=1+4*alpha;
+    if(alpha<0&&disc<=0) return 0.2; const x=Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha);
+    return Math.pow(x,3.5)/Math.sqrt(Math.max(2-x,1e-6))*(Hs/(c0*Tp)); };
+  // ---- Chart 1: wave height vs fetch, three wind speeds (live from windSea) ----
+  const winds=[[5.14,"10 kt","#3288bd"],[7.72,"15 kt","#e8590c"],[10.29,"20 kt","#8e1c6b"]];
+  const c1=winds.map(([u,lab,col])=>{ const pts=[]; for(let F=0;F<=60;F+=1) pts.push([F,windSea(u,F*1000).Hs]); return {color:col,label:lab,pts}; });
+  const chart1=chartSVG({xmin:0,xmax:60,ymin:0,ymax:2.6,xlabel:"fetch — open water upwind (km)",ylabel:"wave height Hs (m)",
+    xticks:[0,20,40,60],yticks:[0,0.5,1,1.5,2,2.5],series:c1});
+  // ---- Chart 2: steepness vs opposing current, for the short-fetch example sea ----
+  const exHs=0.35, exTp=2.41, c0ex=G*exTp/(2*Math.PI), blockKt=c0ex/4/KT_MS;
+  const c2=[]; for(let cur=0;cur<=blockKt*0.985;cur+=blockKt/70) c2.push([cur,Math.min(0.16,steepAt(exHs,exTp,cur))]);
+  const chart2=chartSVG({xmin:0,xmax:blockKt,ymin:0,ymax:0.16,xlabel:"opposing current (kt)",ylabel:"steepness  Hs ÷ wavelength",
+    xticks:[0,0.5,1,1.5],yticks:[0,0.05,0.10,0.15],series:[{color:"#0a3d62",pts:c2}],
+    hlines:[{y:0.05,color:RING[1].col,label:"mild"},{y:0.075,color:RING[2].col,label:"caution"},{y:0.10,color:RING[3].col,label:"rough"},{y:0.143,color:RING[4].col,label:"breaking"}],
+    vlines:[{x:blockKt,color:"#7a1616",label:"blocking"}]});
+  // ---- Worked example (computed live) ----
+  const ex=(F,cur)=>{ const ws=windSea(7.72,F*1000), c0=G*ws.Tp/(2*Math.PI), bk=c0/4/KT_MS, band=hazBand(ws.Hs,ws.Tp,0,cur,0);
+    return {Hs:ws.Hs,Tp:ws.Tp,cur,bk,pct:Math.round(cur/bk*100),S:steepAt(ws.Hs,ws.Tp,cur),band}; };
+  const A=ex(16,1.0), B=ex(8,1.2);
+  const pill=b=>`<span class="bandpill" style="background:${b<1?'#9fb3c8':RING[Math.min(b,4)].col}">${RING_WORD[Math.min(b,4)]}</span>`;
+  const exRow=(lab,f)=>`<tr><th>${lab}</th><td class="n">${f(A)}</td><td class="n">${f(B)}</td></tr>`;
+
+  $("aboutBody").innerHTML=`
+    <p style="margin-bottom:2px"><a href="steepness_physics.pdf" target="_blank" rel="noopener"
+      style="display:inline-block;font-weight:600;background:#0a3d62;color:#fff;padding:7px 13px;border-radius:7px;text-decoration:none">📄 Open the full physics write-up (PDF)</a>
+      <span style="color:#667085;font-size:12px;margin-left:8px">printable · with references · we keep expanding it</span></p>
+    <p><b>The short version.</b> Where wind blows <i>against</i> a tidal current, waves bunch up short
+    and steep — the choppy, standing water of a tide rip. This layer estimates where and when that
+    happens in BC and Washington inside waters, and grades it from mild to breaking. Below is exactly
+    how it gets there, with the equations and two charts drawn live from the very formulas the map runs.</p>
+
+    <h4>1 · How wind builds a sea — and why fetch is the lever</h4>
+    <p>Wind pushes on the water and waves grow. Two things limit how big they get: the <b>wind speed</b>,
+    and the <b>fetch</b> — the distance of open water the wind blows over before it reaches you. Close to
+    an upwind shore the sea is small; the further the open water stretches upwind, the more the waves
+    build, until they reach a “fully developed” size for that wind and grow no more. A breeze down the
+    length of a strait raises a real sea; the same breeze across a narrow channel raises ripples.</p>
+    <p>That is why this map computes fetch <b>directionally</b>. At every water cell it looks upwind and
+    measures how far open water runs before hitting land, and it does this for <b>16 compass directions</b>.
+    When the forecast wind blows from a given direction, the map uses the fetch in that direction — so
+    the same wind speed produces very different seas depending only on which way it blows.</p>
+    <div class="chartwrap"><figure>${chart1}<figcaption>Wave height vs fetch, from the app’s growth
+      formula. Each curve rises then flattens at its “fully developed” ceiling — more fetch stops
+      helping once the sea matures.</figcaption></figure></div>
+
+    <h4>2 · How the app gets wave height (Hs) and period (Tp)</h4>
+    <p>It uses the standard <b>fetch-limited growth laws</b> (the JONSWAP field-experiment fit), capped at
+    the <b>Pierson–Moskowitz</b> fully-developed sea. With wind speed <span class="var">U</span> (m/s),
+    fetch <span class="var">F</span> (m) and gravity <span class="var">g</span> = 9.81:</p>
+    <span class="eq"><span class="var">H</span><sub>s</sub> = 4·<span class="var">U</span>·√( 1.6×10⁻⁷ · <span class="var">F</span> ⁄ <span class="var">g</span> )
+      &nbsp;&nbsp;<span class="cap">significant wave height — grows with wind, and with the square-root of fetch</span></span>
+    <span class="eq"><span class="var">T</span><sub>p</sub> = 1 ⁄ [ 3.5·(<span class="var">g</span>⁄<span class="var">U</span>)·(<span class="var">gF</span>⁄<span class="var">U</span>²)<sup>−0.33</sup> ]
+      &nbsp;&nbsp;<span class="cap">peak period — longer fetch ⇒ longer, faster waves</span></span>
+    <span class="eq"><span class="var">H</span><sub>s</sub> ≤ 0.24·<span class="var">U</span>²⁄<span class="var">g</span> &nbsp;,&nbsp;
+      <span class="var">T</span><sub>p</sub> ≤ 0.72·<span class="var">U</span>
+      &nbsp;&nbsp;<span class="cap">fully-developed ceilings (Pierson–Moskowitz): the flat tops in the chart above</span></span>
+    <p>The key subtlety: <b>both height and period rise with fetch, but period rises faster.</b> A
+    longer fetch makes waves taller <i>and</i> longer — and longer waves are less steep and harder for a
+    current to trip. So bigger is not automatically rougher, as the example below shows.</p>
+
+    <h4>3 · How an opposing current steepens — and blocks — the sea</h4>
+    <p>Waves in deep water travel at a speed set by their period, and carry a length to match:</p>
+    <span class="eq"><span class="var">c</span>₀ = <span class="var">g</span>·<span class="var">T</span><sub>p</sub> ⁄ 2π
+      &nbsp;(wave speed) &nbsp;,&nbsp; <span class="var">L</span>₀ = <span class="var">c</span>₀·<span class="var">T</span><sub>p</sub> (wavelength)
+      &nbsp;&nbsp;<span class="cap">steepness is height ÷ length: S₀ = H<sub>s</sub> ⁄ L₀</span></span>
+    <p>Only the part of the current pointing <i>into</i> the waves matters. With <span class="var">θ</span>
+    the angle between the current’s set and the direction the wind blows from:</p>
+    <span class="eq"><span class="var">U</span><sub>opp</sub> = <span class="var">V</span><sub>current</sub>·cos <span class="var">θ</span>
+      &nbsp;&nbsp;<span class="cap">head-on current is fully opposing; a cross-current barely counts; a following current does nothing</span></span>
+    <p>A wave riding onto an opposing current keeps its period but is forced to slow and <b>shorten</b>;
+    conserving its energy (wave-action), it grows <b>taller</b>. Both effects raise the steepness. Solving
+    the wave-on-current relation, the waves shorten by a factor <span class="var">x</span> = <span class="var">k</span>₀⁄<span class="var">k</span>
+    set by <span class="var">α</span> = −<span class="var">U</span><sub>opp</sub>⁄<span class="var">c</span>₀, and the steepness climbs as</p>
+    <span class="eq"><span class="var">S</span> ≈ ( <span class="var">x</span><sup>3.5</sup> ⁄ √(2−<span class="var">x</span>) )·<span class="var">S</span>₀
+      &nbsp;&nbsp;<span class="cap">the map bins S: ≥0.05 mild · ≥0.075 caution · ≥0.10 rough · ≥0.143 (≈1⁄7) breaking</span></span>
+    <p>When the opposing current reaches <b>a quarter of the wave speed</b> the waves can no longer make
+    headway — they stop, pile up and break. That is the classic wave-blocking limit:</p>
+    <span class="eq"><span class="var">U</span><sub>opp</sub> ≥ <span class="var">c</span>₀ ⁄ 4
+      &nbsp;&nbsp;<span class="cap">short (slow) waves have a low c₀, so they block at a modest current — which is why short-fetch chop is dangerous</span></span>
+    <div class="chartwrap"><figure>${chart2}<figcaption>Steepness of the example sea (0.35 m @ 2.4 s) as an
+      opposing current builds. It runs away toward the breaking line as the current nears the blocking
+      speed (≈${blockKt.toFixed(1)} kt here).</figcaption></figure></div>
+
+    <h4>4 · Worked example — small shifts, big change</h4>
+    <p>Same 15-knot wind at one spot beside a channel. The wind <b>veers about 25°</b> so that instead of
+    blowing along the channel it blows across it — the upwind fetch drops from 16 km to 8 km — and at the
+    same time the ebb <b>strengthens from 1.0 to 1.2 knots</b> against the waves. Neither change is large:</p>
+    <table class="wex"><tr><th></th><th>A · along-channel</th><th>B · across-channel</th></tr>
+      ${exRow("Wind",()=>"15 kt")}
+      ${exRow("Fetch upwind",a=>a===A?"16 km":"8 km")}
+      ${exRow("Wave height H<sub>s</sub>",a=>a.Hs.toFixed(2)+" m")}
+      ${exRow("Wave period T<sub>p</sub>",a=>a.Tp.toFixed(1)+" s")}
+      ${exRow("Opposing current",a=>a.cur.toFixed(1)+" kt")}
+      ${exRow("Blocking current (c₀⁄4)",a=>a.bk.toFixed(1)+" kt")}
+      ${exRow("Current ÷ blocking",a=>a.pct+" %")}
+      ${exRow("Steepness S",a=>a.S.toFixed(3))}
+      <tr><th>Result</th><td>${pill(A.band)}</td><td>${pill(B.band)}</td></tr>
+    </table>
+    <p>The across-channel waves are actually <b>smaller</b> (0.35 m vs 0.50 m) — yet the map flags them as
+    far worse. Being shorter and slower, they need much less current to block, and the modest extra ebb
+    pushes them from ${A.pct}% to ${B.pct}% of that limit. That is the whole point of the layer: the
+    hazard is not the wave size, it is <b>how steep the wind and current together make it</b>, and it can
+    swing from ${RING_WORD[Math.max(1,A.band)]} to ${RING_WORD[B.band]} on shifts a forecast easily contains.</p>
+
+    <h4>5 · Why “protected waters only”, and what is left out</h4>
+    <p>This models locally-built wind chop. It does <b>not</b> know about Pacific <b>swell</b>, which
+    dominates the outer coast and the west end of Juan de Fuca — so those areas are deliberately excluded,
+    where the estimate would mislead. Also not included: how <i>long</i> the wind has blown (build-up
+    time), waves steepening over <b>shallow reefs and bars</b>, and wind/current model error (~2 km grid).
+    Treat every reading as <b>advisory</b> — not a substitute for official forecasts, tide tables, or your
+    own eyes on the water.</p>
+
+    <div class="callout">
+      <h4>Help check it — paddlers wanted</h4>
+      <p style="margin:.3em 0">These are predictions that have <b>not</b> been ground-truthed. If you
+      paddle a spot on the map, comparing what it showed to what you found is genuinely useful. Text to
+      share on a kayaking forum (edit the link and contact first):</p>
+      <textarea id="forumText" readonly></textarea>
+      <button id="copyForum">Copy summary</button>
+    </div>
+
+    <p style="margin-top:14px;opacity:.7;font-size:12px">Data: NOAA/NOS <b>SSCOFS</b> Salish Sea currents ·
+    Environment &amp; Climate Change Canada <b>HRDPS 2.5 km</b> wind · base maps © Esri / USGS.
+    Model heuristic by the author; no warranty — do not use for navigation.</p>`;
+  $("forumText").value=FORUM_SUMMARY;
+  $("copyForum").onclick=()=>{ const ta=$("forumText"); ta.select();
+    navigator.clipboard?.writeText(ta.value).then(()=>{ $("copyForum").textContent="Copied ✓";
+      setTimeout(()=>$("copyForum").textContent="Copy summary",1500); }); };
+}
+function buildBaseSelect(){
+  const md=MODES[mode], sel=$("base");
+  // wind & steepness lead with the plain coastline (md.base==="gray"); currents lead with USGS topo.
+  const order = md.base==="gray" ? ["gray","topo","imagery"] : ["usgs","topo","imagery"];
+  sel.innerHTML="";
+  for(const k of order){ const o=document.createElement("option"); o.value=k; o.textContent=BASES[k].name;
+    if(k===(basePref[mode]||md.base)) o.selected=true; sel.appendChild(o); }
+}
+const basePref={};                        // remember the user's base choice per mode
+/* Fill opacity. MODES[mode].alpha is the ONE source of truth: applyModeGL() pushes it to the shader
+   as uAlpha, and buildLegend() blends every swatch over the base at the same alpha. Moving the
+   slider therefore keeps the key honest by construction — a swatch always shows the colour as it
+   actually lands on the map. Only the swatch background is tinted; chip text stays fully opaque.
+   The setting is per mode (currents 0.85, wind 0.72), so flipping layers restores each one's. */
+function syncOpacityUI(){
+  const a=getAlpha();
+  $("opacity").value=a; $("opacityVal").textContent=Math.round(a*100)+"%";
+}
+const clampAlpha=a=>Math.min(1,Math.max(0.2,a));
+function setAlpha(a){
+  setActiveAlpha(a);                        // steep+rings: adjusts the wind-fill opacity behind the rings
+  syncOpacityUI(); applyModeGL(); buildLegend(); render(); updateURL();
+}
+// applyMode() re-skins everything from the current `mode`; setMode() is the guarded entry point.
+function updateSteepControls(){
+  $("steepStyleFld").style.display = mode==="steep" ? "" : "none";
+  $("windArrowsFld").style.display = (mode==="steep"&&steepStyle==="rings") ? "" : "none";
+  $("about").style.display = STEEP_ON ? "" : "none";      // physics panel rides with the experimental layer
+  $("steepStyle").value=steepStyle;
+}
+function applyMode(){
+  $("mode").value=mode;
+  updateSteepControls();
+  applyModeGL(); syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value);
+  $("note").innerHTML=NOTES[mode];
+  // Every tile re-decodes: hour indices differ per dataset, and the cached hour is now stale.
+  for(const t of [overview,windTile,steepTile,...Object.values(tiles)]) if(t) t.decodedHour=-1;
+  ensureLayer(); updateTiles(); render(); updateURL();
+}
+// Each mode's whole-extent layer is fetched on first use and cached: a wind bookmark never pays the
+// 1.7 MB currents overview, and a currents session never pays the 3.4 MB wind tile.
+function ensureLayer(){
+  if(!meshMan) return;                                   // manifests not in yet; boot() will call us
+  // Steepness needs BOTH fields; loadSteep awaits them. Wind and currents each need only their own.
+  const pending = mode==="steep" ? (steepTile?null:loadSteep)
+                : mode==="wind"  ? (windTile?null:loadWind)
+                :                  (overview?null:loadOverview);
+  if(pending) return pending().catch(e=>setStatus(MODES[mode].label+" layer failed: "+e.message,true));
+  setStatus(loadedSummary());
+}
+function setSteepStyle(v){
+  if(v===steepStyle || (v!=="rings"&&v!=="fill")) return;
+  steepStyle=v; updateSteepControls();
+  applyModeGL(); syncOpacityUI(); buildLegend(); render(); updateURL();
+}
+function setMode(next){
+  if(!MODES[next] || next===mode || (next==="steep"&&!STEEP_ON) || ((next==="wind"||next==="steep")&&windDisabled)) return;
+  mode=next; applyMode();
+}
+function setHour(x){
+  hour=Math.max(0,Math.min(TIMES.length-1,x)); $("time").value=hour;
+  $("timeLabel").textContent=TIMES.length?PTL.format(new Date(TIMES[hour]))+" (+"+hour+"h)":"";
+  render(); updateURL();
+}
+
+/* ---------- bookmarkable view: ?mode=&lat=&lon=&z=&h= ---------- */
+let urlTimer=null;
+function updateURL(){
+  clearTimeout(urlTimer);
+  urlTimer=setTimeout(()=>{
+    const c=map.getCenter();
+    // `a` is the ACTIVE mode's fill opacity: each mode keeps its own, and a link only ever restores
+    // the one it was shared in. The other modes fall back to their defaults.
+    const p={mode,lat:c.lat.toFixed(4),lon:c.lng.toFixed(4),z:map.getZoom(),h:hour,a:getAlpha().toFixed(2)};
+    if(mode==="steep") p.st=steepStyle;         // remember the display so a shared steep link restores it
+    history.replaceState(null,"","?"+new URLSearchParams(p));
+  },250);
+}
+// The mode is applied from the URL BEFORE the map is set up (see the init block), not here: setView
+// fires moveend -> updateTiles, so a still-"current" mode would download every mesh tile in view
+// before the wind layer even appeared.
+function applyURL(){
+  const q=new URLSearchParams(location.search);
+  const lat=parseFloat(q.get("lat")), lon=parseFloat(q.get("lon")), z=parseInt(q.get("z"),10);
+  if(isFinite(lat)&&isFinite(lon)&&isFinite(z)) map.setView([lat,lon],Math.max(z,map.getMinZoom()));
+  return parseInt(q.get("h"),10);
+}
+map.on("moveend zoomend",()=>{ updateTiles(); updateURL(); });
+
+// Region select = navigation shortcut; tile loading is automatic from the viewport.
+{ const o=document.createElement("option"); o.value=-1; o.textContent="Full coast (overview)"; $("region").appendChild(o); }
+REGIONS.forEach((r,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=r[0]; $("region").appendChild(o); });
+$("region").onchange=e=>{ const i=+e.target.value;
+  if(i<0) map.fitBounds(FULL_EXTENT);
+  else { const r=REGIONS[i]; map.setView(r[1], MODES[mode].mesh ? Math.max(r[2],MESH_ZOOM) : r[2]); } };
+$("mode").onchange=e=>setMode(e.target.value);
+$("steepStyle").onchange=e=>setSteepStyle(e.target.value);
+$("windArrows").onchange=()=>{ buildLegend(); render(); };   // legend gains the Beaufort key when on
+$("base").onchange=e=>{ basePref[mode]=e.target.value; setBase(e.target.value); };
+$("arrows").onchange=render;
+$("opacity").oninput=e=>setAlpha(+e.target.value);
+$("time").oninput=e=>setHour(+e.target.value);
+$("playBtn").onclick=()=>{ if(anim){clearInterval(anim);anim=null;$("playBtn").textContent="▶";} else {$("playBtn").textContent="⏸";anim=setInterval(()=>setHour(hour>=TIMES.length-1?0:hour+1),400);} };
+
+// Adopt ?mode= before the first base map / GL uniforms / tile pass, so a wind bookmark never pays
+// for the currents stack on the way in. A stale mode is corrected in boot() once manifests land.
+if(!STEEP_ON){ const o=$("mode").querySelector('option[value="steep"]'); o.disabled=true; o.hidden=true; }
+{ const q=new URLSearchParams(location.search), m=q.get("mode");
+  if(m && MODES[m] && !(m==="steep"&&!STEEP_ON)) mode=m;
+  const st=q.get("st"); if(st==="rings"||st==="fill") steepStyle=st;   // before applyMode/alphaRef
+  $("mode").value=mode;
+  const a=parseFloat(q.get("a"));                  // applies to the URL's mode+display (see updateURL)
+  if(isFinite(a)) setActiveAlpha(a); }
+updateSteepControls();
+syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value); $("note").innerHTML=NOTES[mode];
+buildAbout();
+if(initGL()) boot();
+
+async function boot(){
+  try{
+    // Manifests first (all small). The wind BINARY is lazy — currents users never pay 3.4 MB.
+    const [mm,fm,wm]=await Promise.all([
+      fetch(R2+"/sscofs/meshvel/manifest.json",{cache:"no-store"}).then(r=>r.json()),
+      fetch(R2+"/sscofs/field/manifest.json",{cache:"no-store"}).then(r=>r.json()),
+      fetch(R2+"/hrdps/manifest.json",{cache:"no-store"}).then(r=>r.json()).catch(()=>null),
+    ]);
+    meshMan=mm; fieldMan=fm; RUN_CUR=mm.run;
+    windMan=wm; RUN_WIND=wm&&wm.run;
+    // Steepness needs the wind field too, so it falls with wind.
+    const dropWind=()=>{ windDisabled=true;
+                         for(const v of ["wind","steep"]) $("mode").querySelector(`option[value="${v}"]`).disabled=true;
+                         if(mode==="wind"||mode==="steep"){ mode="current"; applyMode(); } };
+    if(!wm || !wm.regions.overview) dropWind();
+    TIMES=inter(mm.hours, fm.hours);
+    if(!windDisabled){
+      const both=inter(TIMES, wm.hours.map(isoToMs));
+      // If the two models' runs barely overlap, keep the currents timeline and drop wind rather
+      // than silently serving a 2-hour app.
+      if(both.length>=12) TIMES=both; else dropWind();
+    }
+    if(!TIMES.length) throw new Error("SSCOFS mesh and field manifests share no forecast hours");
+    $("time").max=TIMES.length-1;
+    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h, both models)`;
+    const h=applyURL();
+    setHour(isFinite(h)?h:0);
+    await ensureLayer();
+    updateTiles();
+    if(windDisabled) setStatus(loadedSummary()+" · wind unavailable (no overlapping HRDPS hours)");
+  }catch(e){ setStatus("Failed: "+e.message,true); }
+}
+</script>
+</body>
+</html>
