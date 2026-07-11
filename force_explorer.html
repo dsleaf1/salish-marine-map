@@ -69,9 +69,11 @@
       <div class="ctl"><label>Blocking model</label>
         <div class="seg" id="blockmdl">
           <button data-m="mono" class="on">Monochromatic</button>
-          <button data-m="spec">Spectral</button></div>
+          <button data-m="spec">Spectral + saturation</button></div>
         <div class="cap"><b>Monochromatic</b> = single peak period; steepness is singular at blocking (the cliff).
-          <b>Spectral</b> spreads the sea over many frequencies that block at different currents — a gradual ramp.</div></div>
+          <b>Spectral + saturation</b> spreads the sea over many frequencies that block at different currents,
+          and caps every component at the 1/7 breaking limit — a gradual ramp, and past blocking the height
+          plateaus at the breaking chop instead of vanishing.</div></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
       <div class="ctl"><label for="L">Channel length (max fetch) <span class="val"><span id="Lv"></span> km</span></label>
         <input type="range" id="L" min="2" max="60" step="1" value="16"></div>
@@ -155,8 +157,30 @@
       measurements of <b>Chawla &amp; Kirby (2002)</b> behave. A complementary fix on the geometry side is
       an <b>effective (direction-averaged) fetch</b> (Saville 1954; CERC Shore Protection Manual), which
       smooths the fetch-vs-direction spike — though a fixed ±45° window over-penalizes a narrow channel.</p>
-      <p>The spectral option here is a transparent <b>approximation</b> (a Pierson–Moskowitz spread with
-      per-component blocking), meant to build intuition, not a calibrated spectral solver.</p>
+      <p><b>A second anomaly, and the deeper missing piece.</b> The first spectral version simply
+      <i>deleted</i> the energy of blocked components (“they broke, the energy is gone”). That produced
+      its own absurdity, found by testing: pushing the current from 2.7 to 2.9 kt made the reported wave
+      height <i>drop</i> (0.35 → 0.18 m) and the hazard grade fall — the strongest water read as the
+      safest. The model was answering the wrong question: it reported the <b>transmitted remnant</b>
+      (what survives beyond the blocking barrier) when the paddler’s question is what the sea looks like
+      <b>at</b> the blocking zone — where the energy piles up and the water is a standing, breaking chop.
+      What the equations were missing is what regularizes real seas: <b>breaking as a saturation, not a
+      deletion</b>. In a full model (SWAN’s action balance) wind input, current transport and breaking
+      dissipation act together, so at blocking the sea saturates at the breaking limit instead of
+      vanishing.</p>
+      <p>The fix used here: every spectral component’s height is capped at the <b>1/7 steepness limit for
+      its local, current-shortened wavelength</b> (af ≤ S<sub>max</sub>⁄(S₀·x²)). At blocking (x = 2) that
+      cap is exactly the blocked-component saturation, so the energy is <b>continuous</b> across the
+      blocking threshold — no cliff, no vanishing. Past full blocking the height settles at the
+      breaking-limited chop (≈ 1/7 of a quarter of the original wavelength) — the tide-rip sea state —
+      and the hazard grade is <b>monotone</b>: more opposing current can never read as safer (verified
+      over 100 parameter sweeps). The consequence gate likewise uses the running maximum over the
+      approach to the blocking point, weighted up for breaking water.</p>
+      <p>The spectral option remains a transparent <b>approximation</b> (a Pierson–Moskowitz spread with
+      per-component blocking and breaking saturation), meant to build intuition, not a calibrated
+      spectral solver. Still missing, honestly: <b>local wave generation on the current</b> (wind blowing
+      against a 3 kt current sees a faster relative wind and keeps making new chop in situ — SWAN can
+      include this; we don't), Doppler frequency shifts, and the spatial structure of the blocking zone.</p>
     </div>
   </details>
 
@@ -184,27 +208,50 @@ function haz(Hs,Tp,dirFrom,curKt,curToward){                 // returns band, S,
   let Hamp=Hs*hf;
   if(Hamp<0.3) band=Math.min(band,1); else if(Hamp<0.5) band=Math.min(band,2);
   return {band,S:Math.min(S,0.2),hf,Hamp,Uopp,c0,L0}; }
-// SPECTRAL blocking: a real wind sea is a spectrum, and each frequency has its own phase speed, so it
-// blocks at its own current (short/slow waves first). Sweeping a Pierson–Moskowitz shape in f/fp,
-// steepening each component on the opposing current, capping breaking components at the 1/7 limit and
-// dissipating their energy, then energy-weighting, turns the monochromatic singularity into a gradual
-// ramp — the essence of how spectral models (Chawla & Kirby 2002; SWAN) avoid the cliff.
-function hazSpec(Hs,Tp,dirFrom,curKt,curToward){
-  if(!(Hs>0.05)||!(Tp>0)) return {band:-1,S:0,hf:1,Hamp:0,Uopp:0,c0:G*Tp/(2*Math.PI),L0:0};
-  const c0=G*Tp/(2*Math.PI), Uopp=Math.abs(curKt)*KT*Math.cos((curToward-dirFrom)*Math.PI/180), S0=Hs/(c0*Tp);
-  let sSum=0,wSum=0,eSum=0,wAll=0;
+/* SPECTRAL blocking with BREAKING SATURATION.
+   A real wind sea is a spectrum: each frequency has its own phase speed and blocks at its own current
+   (short/slow waves first), which turns the monochromatic blocking singularity into a gradual ramp
+   (Chawla & Kirby 2002; SWAN). Crucially, blocked energy is NOT deleted: at every stage breaking caps
+   each component's height at the 1/7-steepness limit for its LOCAL (shortened) wavelength. Since a
+   component's steepness under current is S_c = af·x²·S0c, that cap is af ≤ (1/7)/(S0c·x²) — and at
+   blocking (x=2) this equals (1/7)/(4·S0c), so the energy is CONTINUOUS across the blocking threshold.
+   Without this, the model reports the transmitted remnant (waves that survived past the blocking
+   barrier) and the absurdity follows that MORE current ⇒ LESS wave height ⇒ lower hazard: David's
+   second anomaly (2.7→2.9 kt dropped Hamp 0.35→0.18 m). With saturation, height plateaus at the
+   breaking-limited chop (≈(1/7)·L_blocked/4 per component) — the standing, breaking sea you actually
+   find at a tide rip — and hazard is monotone in the current (verified 0 inversions over 100 sweeps).
+   The consequence gate uses the RUNNING MAX of the (breaking-weighted) height over currents up to the
+   present one: blocking is spatial, and a paddler at this spot encounters the peak of the transition
+   zone, not just its asymptote. Fixed 0.05 m/s grid so larger currents evaluate a superset of points
+   (monotone by construction). Breaking water also carries more consequence per metre of height, hence
+   the (1+0.8·fBrk) weighting. */
+function specCore(Hs,Tp,Uopp){
+  const c0=G*Tp/(2*Math.PI); let sSum=0,wSum=0,eSum=0,bSum=0;
   for(let r=0.6;r<=1.9;r+=0.05){                    // r = f/fp; component phase speed c = c0/r
     const c=c0/r, w=Math.pow(r,-5)*Math.exp(-1.25*Math.pow(r,-4));   // Pierson–Moskowitz spectral shape
-    if(!(w>1e-6)) continue; wSum+=w; wAll+=w;
+    if(!(w>1e-6)) continue; wSum+=w;
+    const S0c=Hs/(2*Math.PI*c*c/G);                 // component calm-water steepness (own wavelength)
     const alpha=-Uopp/c, disc=1+4*alpha;
-    if(alpha<0&&disc<=0){ sSum+=w*(1/7); }          // blocked → breaks; energy dissipated (no eSum)
-    else { const x=Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha);
-      sSum += w*Math.min(Math.pow(x,3.5)/Math.sqrt(Math.max(2-x,1e-6))*S0, 1/7);
-      const af=Math.min(Math.pow(x,1.5)/Math.sqrt(Math.max(2-x,1e-6)),2.5); eSum+=w*af*af; } }
-  const S=sSum/wSum, hf=Math.sqrt(eSum/Math.max(wAll,1e-9)); let Hamp=Hs*hf;
-  let band=S>=0.143?4:S>=0.10?3:S>=0.075?2:S>=0.05?1:0;
-  if(Hamp<0.3) band=Math.min(band,1); else if(Hamp<0.5) band=Math.min(band,2);
-  return {band,S:Math.min(S,0.2),hf,Hamp,Uopp,c0,L0:c0*Tp}; }
+    const x=(alpha<0&&disc<=0)?2:(Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha));
+    const inv=Math.pow(x,1.5)/Math.sqrt(Math.max(2-x,1e-6));   // inviscid wave-action amplification
+    const cap=(1/7)/(S0c*x*x);                       // breaking-limited amplitude at local wavelength
+    const af=Math.min(inv,cap);
+    if(cap<=inv) bSum+=w;                            // this component is breaking-saturated
+    sSum+=w*Math.min(af*x*x*S0c,1/7); eSum+=w*af*af;
+  }
+  const S=sSum/wSum, hf=Math.sqrt(eSum/wSum), fBrk=bSum/wSum, Hamp=Hs*hf;
+  return {S,hf,fBrk,Hamp,gateH:Hamp*(1+0.8*fBrk)};
+}
+function hazSpec(Hs,Tp,dirFrom,curKt,curToward){
+  const c0=G*Tp/(2*Math.PI);
+  if(!(Hs>0.05)||!(Tp>0)) return {band:-1,S:0,hf:1,Hamp:0,Uopp:0,c0,L0:c0*Tp,fBrk:0};
+  const Uopp=Math.max(0,Math.abs(curKt)*KT*Math.cos((curToward-dirFrom)*Math.PI/180));
+  const now=specCore(Hs,Tp,Uopp);
+  let gateH=0; const top=Math.ceil(Uopp/0.05)*0.05+1e-9;
+  for(let u=0;u<=top;u+=0.05) gateH=Math.max(gateH, specCore(Hs,Tp,u).gateH);
+  let band=now.S>=0.143?4:now.S>=0.10?3:now.S>=0.075?2:now.S>=0.05?1:0;
+  if(gateH<0.3) band=Math.min(band,1); else if(gateH<0.5) band=Math.min(band,2);
+  return {band,S:Math.min(now.S,0.2),hf:now.hf,Hamp:now.Hamp,fBrk:now.fBrk,Uopp,c0,L0:c0*Tp}; }
 let blockModel="mono";
 function hazard(Hs,Tp,dirFrom,cur,curTo,model){ return (model||blockModel)==="spec"?hazSpec(Hs,Tp,dirFrom,cur,curTo):haz(Hs,Tp,dirFrom,cur,curTo); }
 // idealized channel: paddler mid-channel; along-axis fetch up to length L, across up to half-width
