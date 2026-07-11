@@ -264,8 +264,14 @@ const PTL=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Vancouver',weekday:
 // zoomAnimation off keeps the WebGL overlay perfectly registered with the tiles
 // Lock the view to the model: can't zoom out past the SSCOFS extent or pan off it.
 const map=L.map("map",{zoomAnimation:false,fadeAnimation:false,
-  maxBounds:L.latLngBounds(FULL_EXTENT).pad(0.12),maxBoundsViscosity:1.0}).fitBounds(FULL_EXTENT);
-map.setMinZoom(map.getZoom());
+  maxBounds:L.latLngBounds(FULL_EXTENT).pad(0.12),maxBoundsViscosity:1.0});
+// Fit to the model extent and lock min-zoom there. Done via a helper because on first load of the
+// deployed page the map box can still report 0×0 at script time — then fitBounds resolves to world
+// zoom and setMinZoom pins it there (the "whole globe" bug). Re-fit once after layout to correct it.
+function fitExtent(){ map.setMinZoom(0); map.invalidateSize(); map.fitBounds(FULL_EXTENT,{animate:false}); map.setMinZoom(map.getZoom()); }
+fitExtent();
+requestAnimationFrame(()=>{ if(map.getSize().x<80 || map.getZoom()<1) fitExtent(); });
+addEventListener("load",()=>{ if(map.getSize().x<80 || map.getZoom()<1) fitExtent(); });
 /* Overlay stacking. The GL/arrow canvases must live INSIDE mapPane, in a pane of their own:
    mapPane carries a transform, so it is a stacking context, and anything parented to it (a labels
    pane, however high its z-index) can never rise above a canvas that is mapPane's sibling in the
