@@ -904,9 +904,12 @@ function buildAbout(){
   const exRow=(lab,f)=>`<tr><th>${lab}</th><td class="n">${f(A)}</td><td class="n">${f(B)}</td></tr>`;
 
   $("aboutBody").innerHTML=`
-    <p style="margin-bottom:2px"><a href="steepness_physics.pdf" target="_blank" rel="noopener"
-      style="display:inline-block;font-weight:600;background:#0a3d62;color:#fff;padding:7px 13px;border-radius:7px;text-decoration:none">📄 Open the full physics write-up (PDF)</a>
-      <span style="color:#667085;font-size:12px;margin-left:8px">printable · with references · we keep expanding it</span></p>
+    <p style="margin-bottom:2px">
+      <a href="steepness_physics.pdf" target="_blank" rel="noopener"
+        style="display:inline-block;font-weight:600;background:#0a3d62;color:#fff;padding:7px 13px;border-radius:7px;text-decoration:none">📄 Physics write-up (PDF)</a>
+      <a href="force_explorer.html" target="_blank" rel="noopener"
+        style="display:inline-block;font-weight:600;background:#0a3d62;color:#fff;padding:7px 13px;border-radius:7px;text-decoration:none;margin-left:6px">🧮 Interactive force explorer</a>
+      <span style="color:#667085;font-size:12px;margin-left:8px">printable · with references · we keep expanding these</span></p>
     <p><b>The short version.</b> Where wind blows <i>against</i> a tidal current, waves bunch up short
     and steep — the choppy, standing water of a tide rip. This layer estimates where and when that
     happens in BC and Washington inside waters, and grades it from mild to breaking. Below is exactly
