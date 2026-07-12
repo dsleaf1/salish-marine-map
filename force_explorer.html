@@ -66,6 +66,14 @@
           <button data-d="0" class="on">Ebb — sets N&nbsp;↑</button>
           <button data-d="180">Flood — sets S&nbsp;↓</button></div>
         <div class="cap">Whether it opposes the waves depends on the wind — the model works it out (see “opposing current”).</div></div>
+      <div class="ctl"><label>Sea model</label>
+        <div class="seg" id="seamdl">
+          <button data-s="dir" class="on">Directional components</button>
+          <button data-s="ray">Single ray</button></div>
+        <div class="cap"><b>Directional components</b> = the wind raises a sea in every direction
+          (each with its own fetch and the wind's component that way); display follows the dominant
+          system, hazard follows the worst one. <b>Single ray</b> = all energy straight downwind
+          (the old model — makes oblique winds read worse than head-on ones).</div></div>
       <div class="ctl"><label>Blocking model</label>
         <div class="seg" id="blockmdl">
           <button data-m="mono" class="on">Monochromatic</button>
@@ -184,9 +192,41 @@
     </div>
   </details>
 
+  <details><summary>Why an oblique wind can’t be worse than a head-on one — directional components</summary>
+    <div class="body">
+      <p><b>The third anomaly (found by field testing this page).</b> In a 47 × 5 km channel with 14 kt
+      of wind and a 1 kt opposing ebb, the single-ray model rated a <b>25°-oblique</b> wind “rough”
+      (0.37 m of short chop, 56% of blocking) while the <b>head-on</b> wind — same speed, far more
+      fetch, far bigger waves — rated only “mild”. A small veer of the forecast wind flipped the map’s
+      verdict in the wrong direction.</p>
+      <p><b>Why that is internally inconsistent.</b> A wind sea’s short-wave tail saturates at a level
+      set by the <i>wind</i>, nearly independent of fetch (Phillips saturation — the reason the JONSWAP
+      spectrum’s high-frequency face is universal). Computing it from the model’s own spectrum: the
+      head-on sea carries <b>0.22 m</b> of height in the 1.9–2.4 s band — <i>more</i> than the 0.16 m
+      the oblique sea carries there. The head-on case <b>contains the oblique case’s chop</b>, plus
+      0.8 m of longer waves on top. It cannot be less hazardous.</p>
+      <p><b>What was missing: waves don’t all travel downwind.</b> The single ray sends every joule of
+      wave energy exactly along the wind with one geometric fetch. Real channel winds raise a
+      <b>component sea in every direction</b>: energy travelling at angle δ off the wind is driven by
+      the wind component U·cos δ over the fetch in <i>that</i> direction. In a long channel this is why
+      an oblique wind still builds its dominant waves <i>along the axis</i> — the “slanting fetch”
+      effect, standard in restricted-fetch engineering (Seymour 1977; Donelan 1980) and confirmed by
+      field measurements in narrow bays (Pettersson, Kahma &amp; Tuomi 2010, <i>J. Phys. Oceanogr.</i>).</p>
+      <p><b>The fix (the “Sea model” toggle):</b> the display follows the <b>dominant</b> component
+      (largest period — Donelan’s criterion), so the reported wave height no longer collapses from
+      0.98 m to 0.37 m on a 25° veer; and the hazard takes the <b>worst band over all components</b>,
+      because a mixed sea is as dangerous as its worst subsystem — an energy-weighted average lets a
+      big benign swell dilute (hide) steep chop. With this, the head-on case is rated by its own
+      embedded oblique chop and can never rank below the oblique case; the hazard stays monotone in
+      current (a maximum of monotone functions) and varies smoothly with wind direction. It is a
+      conservative screening treatment: each component is assessed at its full fetch-limited size.</p>
+    </div>
+  </details>
+
   <p class="foot">Idealized single-channel model for understanding — not a site forecast. Deep-water wind
-  sea (JONSWAP fetch-limited, Pierson–Moskowitz cap) steepened by an opposing current (wave-action,
-  blocking at c₀⁄4). No swell, no build-up time, no shoaling. Advisory only — not for navigation.</p>
+  sea (JONSWAP fetch-limited, Pierson–Moskowitz cap; directional components per restricted-fetch method)
+  steepened by an opposing current (wave-action, blocking at c₀⁄4, breaking-saturated). No swell, no
+  build-up time, no shoaling. Advisory only — not for navigation.</p>
 </main>
 
 <script>
@@ -268,6 +308,8 @@ $("curdir").addEventListener("click",e=>{ const b=e.target.closest("button"); if
   curToward=+b.dataset.d; [...$("curdir").children].forEach(x=>x.classList.toggle("on",x===b)); render(); });
 $("blockmdl").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return;
   blockModel=b.dataset.m; [...$("blockmdl").children].forEach(x=>x.classList.toggle("on",x===b)); render(); });
+$("seamdl").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return;
+  seaModel=b.dataset.s; [...$("seamdl").children].forEach(x=>x.classList.toggle("on",x===b)); render(); });
 
 // P (kW/m) from height & period
 const powerKW=(H,Tp)=> RHO*G*G/(64*Math.PI)*H*H*Tp/1000;
@@ -275,11 +317,44 @@ const energyKJ=(H)=> RHO*G*H*H/16/1000;
 
 function state(){ return { U:+$("U").value*KT, phi:+$("phi").value, V:+$("V").value, L:+$("L").value, W:+$("W").value }; }
 
+/* Sea model. "Single ray" sends all wave energy exactly downwind with one ray's fetch — simple, but
+   in a channel it makes an oblique wind read WORSE than a head-on one (anomaly 3): the head-on sea
+   in fact CONTAINS the oblique chop (a wind sea's short-wave tail saturates at a level set by the
+   wind, nearly independent of fetch — Phillips saturation, the JONSWAP tail), plus the big waves.
+   "Directional components" is the restricted-fetch method (Seymour 1977; Donelan 1980 slanting
+   fetch; field-confirmed in narrow bays by Pettersson, Kahma & Tuomi 2010): the wind raises a
+   component sea in EVERY direction δ off the wind, driven by the wind component U·cosδ over that
+   direction's own fetch. The DOMINANT system (largest period — Donelan's criterion) carries the
+   sea's energy and is displayed; the HAZARD is the worst band over all components — a mixed sea is
+   as dangerous as its worst subsystem, not its energy-weighted average. Max of monotone functions
+   keeps hazard monotone in current; max over a rotating fan keeps it smooth in wind direction. */
+let seaModel="dir";
 function compute(phiDeg, model){                            // full result for a wind FROM phiDeg
-  const s=state(), F=fetchKm(phiDeg, s.L, s.W)*1000, ws=windSea(s.U,F);
-  const h=hazard(ws.Hs,ws.Tp,phiDeg,s.V,curToward,model);
-  const P=powerKW(h.Hamp||0, ws.Tp), E=energyKJ(h.Hamp||0);
-  return {phiDeg,fetch:F/1000,Hs:ws.Hs,Tp:ws.Tp,...h,P,E}; }
+  const s=state(), span=(seaModel==="dir")?80:0;
+  let dom=null, worst=null;
+  for(let d=-span; d<=span; d+=5){
+    const Ueff=s.U*Math.cos(d*Math.PI/180); if(span&&Ueff<0.3) continue;
+    const from=((phiDeg+d)%360+360)%360;
+    const F=fetchKm(from,s.L,s.W)*1000, w=windSea(Ueff,F);
+    if(!dom||w.Tp>dom.Tp) dom={Hs:w.Hs,Tp:w.Tp,from,Fkm:F/1000};
+    if(span&&!(w.Hs>0.05)) continue;
+    const h=hazard(w.Hs,w.Tp,from,s.V,curToward,model);
+    if(!worst||h.band>worst.band||(h.band===worst.band&&h.S>worst.S))
+      worst={...h,from,d,Fkm:F/1000,cHs:w.Hs,cTp:w.Tp};
+  }
+  if(!worst){                                               // calm / no viable component
+    const F=fetchKm(phiDeg,s.L,s.W)*1000, w=windSea(s.U,F);
+    const h=hazard(w.Hs,w.Tp,phiDeg,s.V,curToward,model);
+    dom={Hs:w.Hs,Tp:w.Tp,from:phiDeg,Fkm:F/1000};
+    worst={...h,from:phiDeg,d:0,Fkm:F/1000,cHs:w.Hs,cTp:w.Tp};
+  }
+  // dominant system's own transformation on the current (headline height/period/power)
+  const hd=(dom.from===worst.from && dom.Tp===worst.cTp) ? worst
+         : hazard(dom.Hs,dom.Tp,dom.from,s.V,curToward,model);
+  const P=powerKW(hd.Hamp||0, dom.Tp), E=energyKJ(hd.Hamp||0);
+  return {phiDeg, fetch:worst.Fkm, dom, gov:worst,
+          Hs:dom.Hs, Tp:dom.Tp, L0:hd.L0, hf:hd.hf, Hamp:hd.Hamp,
+          band:worst.band, S:worst.S, Uopp:worst.Uopp, c0:worst.c0, P, E}; }
 
 function render(){
   const s=state();
@@ -291,17 +366,22 @@ function render(){
   const b=Math.max(0,r.band);
   $("bandpill").textContent=BAND_WORD[b]; $("bandpill").style.background=BAND_COL[b];
   $("bandwhy").textContent = r.band<1 ? "wind and current not steepening the sea here"
-    : "opposing current is "+Math.round(r.Uopp/r.c0*4*100)+"% of the blocking speed";
+    : "opposing current is "+Math.round(r.Uopp/r.c0*4*100)+"% of the blocking speed"
+      +(seaModel==="dir"?" for the governing component":"");
   $("Hamp").textContent=(r.Hamp||0).toFixed(2); $("Hs").textContent=r.Hs.toFixed(2);
   $("Tp").textContent=r.Tp.toFixed(1); $("L0").textContent=(r.L0||0).toFixed(0);
   $("S").textContent=(r.S||0).toFixed(3);
   $("P").textContent=r.P.toFixed(r.P<10?2:1);
   const blockKt=r.c0? r.c0/4/KT : 0;
+  const fkm=v=>v>=60?"≥60 km":v.toFixed(1)+" km";
   $("readout").innerHTML=
-    row("Fetch upwind", r.fetch>=60?"≥60 km":r.fetch.toFixed(1)+" km")
+    (seaModel==="dir"
+      ? row("Dominant waves", r.dom.Hs.toFixed(2)+" m @ "+r.dom.Tp.toFixed(1)+" s from "+cmp(r.dom.from)+" · fetch "+fkm(r.dom.Fkm))
+       +row("Governing (worst) component", r.gov.cHs.toFixed(2)+" m @ "+r.gov.cTp.toFixed(1)+" s from "+cmp(r.gov.from)+" (δ "+(r.gov.d>0?"+":"")+r.gov.d+"°) · fetch "+fkm(r.gov.Fkm))
+      : row("Fetch upwind", fkm(r.fetch)))
    +row("Wind", $("U").value+" kt from "+cmp(s.phi)+" ("+s.phi+"°)")
-   +row("Opposing current", (r.Uopp/KT).toFixed(2)+" kt  ("+(curToward===0?"ebb":"flood")+")")
-   +row("Blocking current c₀⁄4", blockKt.toFixed(2)+" kt")
+   +row("Opposing current"+(seaModel==="dir"?" (governing)":""), (r.Uopp/KT).toFixed(2)+" kt  ("+(curToward===0?"ebb":"flood")+")")
+   +row("Blocking current c₀⁄4"+(seaModel==="dir"?" (governing)":""), blockKt.toFixed(2)+" kt")
    +row("Wave energy density E", (r.E||0).toFixed(1)+" kJ/m²")
    +row("Wave power P", r.P.toFixed(2)+" kW/m")
    +row("Height amplification by current", "×"+(r.hf||1).toFixed(2));
@@ -316,12 +396,14 @@ function drawSchematic(s,r){
   // channel (vertical strip)
   g+=`<rect x="${cx-chW/2}" y="${cy-chL/2}" width="${chW}" height="${chL}" fill="#cfe0d6" stroke="#8fae9b" rx="4"/>`;
   g+=`<text x="${cx+chW/2+6}" y="${cy-chL/2+14}" font-size="10" fill="#5a7a66">channel</text>`;
-  // fetch line upwind (toward the wind source = bearing phi)
-  const br=s.phi*Math.PI/180, dx=Math.sin(br), dy=-Math.cos(br);
+  // fetch line: along the GOVERNING component's from-direction (the fetch that sets the hazard);
+  // in single-ray mode gov.from = the wind direction, so this reduces to the old behaviour
+  const gb=(r.gov?r.gov.from:s.phi)*Math.PI/180, gdx=Math.sin(gb), gdy=-Math.cos(gb);
   const fpx=Math.min(140, r.fetch*sc);
-  g+=`<line x1="${cx}" y1="${cy}" x2="${cx+dx*fpx}" y2="${cy+dy*fpx}" stroke="#e11d48" stroke-width="2" stroke-dasharray="4 3"/>`;
-  g+=`<text x="${cx+dx*fpx/2+6}" y="${cy+dy*fpx/2}" font-size="10" fill="#e11d48">fetch ${r.fetch>=60?"≥60":r.fetch.toFixed(0)} km</text>`;
+  g+=`<line x1="${cx}" y1="${cy}" x2="${cx+gdx*fpx}" y2="${cy+gdy*fpx}" stroke="#e11d48" stroke-width="2" stroke-dasharray="4 3"/>`;
+  g+=`<text x="${cx+gdx*fpx/2+6}" y="${cy+gdy*fpx/2}" font-size="10" fill="#e11d48">fetch ${r.fetch>=60?"≥60":r.fetch.toFixed(0)} km</text>`;
   // wind arrow: wind comes FROM bearing phi, so it flies from the phi side toward downwind (phi+180)
+  const br=s.phi*Math.PI/180, dx=Math.sin(br), dy=-Math.cos(br);
   const wl=42;
   g+=arrowSVG(cx+dx*wl, cy+dy*wl, cx-dx*wl, cy-dy*wl, "#2563eb", 3.2);
   g+=`<text x="${cx+dx*wl}" y="${cy+dy*wl-6}" font-size="11" fill="#2563eb" font-weight="700" text-anchor="middle">wind</text>`;
