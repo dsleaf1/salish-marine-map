@@ -22,6 +22,10 @@
   .seg{display:flex;gap:0;border:1px solid #d7dde6;border-radius:8px;overflow:hidden;margin-top:2px}
   .seg button{flex:1;border:0;background:#fff;padding:7px;font:inherit;cursor:pointer;color:var(--muted)}
   .seg button.on{background:var(--accent);color:#fff;font-weight:600}
+  .modelbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .modelbar .chip{flex:1 1 240px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:8px 12px;font-size:13px}
+  .modelbar .chip .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .modelbar .chip .name{font-weight:700;color:var(--ink)}
   .viz{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   @media(max-width:620px){ .viz{grid-template-columns:1fr} }
   .viz figure{margin:0} .viz svg{width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:10px}
@@ -92,6 +96,7 @@
     </div>
 
     <div>
+      <div id="modelbar" class="modelbar"></div>
       <div class="viz">
         <figure><svg id="schem" viewBox="0 0 300 300"></svg>
           <figcaption class="cap">Plan view: channel (grey), wind (blue, from), current (teal, along axis),
@@ -361,6 +366,11 @@ function render(){
   $("Uv").textContent=$("U").value; $("phiv").textContent=$("phi").value+"° ("+cmp(+$("phi").value)+")";
   $("Vv").textContent=(+$("V").value).toFixed(1); $("Lv").textContent=$("L").value; $("Wv").textContent=(+$("W").value).toFixed(1);
   const r=compute(s.phi);
+  const seaName=seaModel==="dir"?"Directional components":"Single ray";
+  const blockName=blockModel==="spec"?"Spectral + saturation":"Monochromatic";
+  $("modelbar").innerHTML=
+    `<div class="chip"><div class="name">${seaName}_Sea Model</div></div>`
+   +`<div class="chip"><div class="name">${blockName}_Blocking Model</div></div>`;
   drawSchematic(s,r); drawPolar(s);
   // readout
   const b=Math.max(0,r.band);
