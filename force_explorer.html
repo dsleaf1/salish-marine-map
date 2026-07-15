@@ -14,6 +14,8 @@
   main{max-width:1080px;margin:0 auto;padding:18px}
   .grid{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start}
   @media(max-width:820px){ .grid{grid-template-columns:1fr} }
+  #controls{position:sticky;top:12px;align-self:start}
+  @media(max-width:820px){ #controls{position:static} }
   .panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
   .ctl{margin:0 0 14px}
   .ctl label{display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:4px}
@@ -26,10 +28,25 @@
   .modelbar .chip{flex:1 1 240px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:8px 12px;font-size:13px}
   .modelbar .chip .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   .modelbar .chip .name{font-weight:700;color:var(--ink)}
-  .viz{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  @media(max-width:620px){ .viz{grid-template-columns:1fr} }
-  .viz figure{margin:0} .viz svg{width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:10px}
+  .livehead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer;font-weight:600;color:var(--accent)}
+  .btn:hover{background:#f5f7fa}
+  .diagrow{display:flex;gap:12px;flex-wrap:wrap}
+  .diagrow figure{margin:0;flex:1 1 220px;max-width:260px}
+  .diagrow svg{width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:10px}
   .cap{font-size:12px;color:var(--muted);margin-top:5px}
+  .pillstrip{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 0}
+  .pillstrip .pillitem{background:#fff;border:1px solid var(--line);border-radius:9px;padding:8px 12px;flex:1 1 150px}
+  .pillstrip .pillitem .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px}
+  .explain-group{margin-top:24px}
+  .explain-group h2{font-size:15px;margin:0 0 8px;color:var(--ink)}
+  table.cmp{border-collapse:collapse;width:100%;font-size:12px;margin-top:4px}
+  table.cmp th,table.cmp td{border-bottom:1px solid var(--line);padding:5px 6px;text-align:right;white-space:nowrap}
+  table.cmp th{color:var(--muted);font-weight:600;font-size:11px}
+  table.cmp td:first-child,table.cmp th:first-child{text-align:left}
+  table.cmp td.del{cursor:pointer;color:#e11d48;text-align:center;font-weight:700}
+  .cmp-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .cmp-empty{font-size:12px;color:var(--muted);padding:8px 2px}
   table.read{border-collapse:collapse;width:100%;font-size:13px;margin-top:2px}
   table.read td{border-bottom:1px solid var(--line);padding:6px 4px}
   table.read td.k{color:var(--muted)} table.read td.v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
@@ -97,7 +114,12 @@
 
     <div>
       <div id="modelbar" class="modelbar"></div>
-      <div class="viz">
+      <div class="livehead">
+        <div style="font-size:12px;color:var(--muted)">Diagrams update live as you drag sliders — no
+          scrolling needed to see the effect.</div>
+        <button id="savePngBtn" class="btn" type="button">📷 Save diagrams (PNG)</button>
+      </div>
+      <div class="diagrow" id="diagrow">
         <figure><svg id="schem" viewBox="0 0 300 300"></svg>
           <figcaption class="cap">Plan view: channel (grey), wind (blue, from), current (teal, along axis),
             and the upwind <b>fetch</b> (dashed) to where the wind meets open-water’s edge.</figcaption></figure>
@@ -107,14 +129,18 @@
             <span style="color:#94a3b8;font-weight:700">steepness (other model, dashed)</span>, and
             <span style="color:#b5179e;font-weight:700">force</span>. Dot = current wind.
             <span id="sens"></span></figcaption></figure>
+        <figure><svg id="qrose" viewBox="0 0 300 300"></svg>
+          <figcaption class="cap">Heading rose — hazard vs the course <b>you</b> steer (sea fixed): lobes
+            off the stern quarter and beam of the sea. Dots = the two channel transits.</figcaption></figure>
+      </div>
+      <div class="pillstrip">
+        <div class="pillitem"><div class="lab">Steepness band</div><div id="bandpill" class="bandpill"></div></div>
+        <div class="pillitem"><div class="lab">Transit N ↑ (up-channel)</div><div id="qN" class="bandpill"></div></div>
+        <div class="pillitem"><div class="lab">Transit S ↓ (down-channel)</div><div id="qS" class="bandpill"></div></div>
       </div>
 
       <div class="panel" style="margin-top:16px">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <div style="font-size:15px;font-weight:700">Result:</div>
-          <div id="bandpill" class="bandpill"></div>
-          <div id="bandwhy" style="font-size:13px;color:var(--muted)"></div>
-        </div>
+        <div id="bandwhy" style="font-size:13px;color:var(--muted)"></div>
         <div class="metric">
           <div class="m"><div class="lab">Wave height (with current)</div><div class="num"><span id="Hamp"></span> m</div><div class="sub">calm-water H<sub>s</sub> = <span id="Hs"></span> m</div></div>
           <div class="m"><div class="lab">Wave period</div><div class="num"><span id="Tp"></span> s</div><div class="sub">wavelength <span id="L0"></span> m</div></div>
@@ -124,25 +150,43 @@
         <table class="read"><tbody id="readout"></tbody></table>
         <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
         <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-          <div style="font-size:15px;font-weight:700">Directional (quartering-sea) hazard — kayak</div>
+          <div style="font-size:15px;font-weight:700">Directional (quartering-sea) hazard — detail</div>
           <div style="font-size:12px;color:var(--muted)">separate model · read alongside the steepness result above</div>
         </div>
         <div class="metric" style="align-items:stretch">
-          <div class="m"><div class="lab">Transiting N ↑ (up-channel)</div>
-            <div style="margin:4px 0"><span id="qN" class="bandpill"></span></div>
-            <div class="sub" id="qNwhy"></div></div>
-          <div class="m"><div class="lab">Transiting S ↓ (down-channel)</div>
-            <div style="margin:4px 0"><span id="qS" class="bandpill"></span></div>
-            <div class="sub" id="qSwhy"></div></div>
-          <div class="m" style="flex:1 1 200px"><div class="lab">Heading rose</div>
-            <svg id="qrose" viewBox="0 0 300 300" style="width:100%;height:auto"></svg>
-            <div class="sub">hazard vs the course <b>you</b> steer — lobes off the stern quarter and beam of the sea</div></div>
+          <div class="m"><div class="lab">Transiting N ↑ (up-channel)</div><div class="sub" id="qNwhy"></div></div>
+          <div class="m"><div class="lab">Transiting S ↓ (down-channel)</div><div class="sub" id="qSwhy"></div></div>
         </div>
         <div class="cap" id="qconf"></div>
+        <span id="qspread" style="display:none"></span>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="livehead">
+          <div style="font-size:15px;font-weight:700">Comparison table</div>
+          <div class="cmp-actions">
+            <button id="addRowBtn" class="btn" type="button">➕ Add to table</button>
+            <button id="clearRowsBtn" class="btn" type="button">Clear all</button>
+            <button id="exportCsvBtn" class="btn" type="button">Export CSV</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="cmp" id="cmpTable">
+            <thead><tr>
+              <th>Sea</th><th>Block</th><th>Wind kt</th><th>Dir°</th><th>Current kt</th><th>Set</th>
+              <th>L km</th><th>W km</th><th>Band</th><th>Hs·w m</th><th>Tp s</th><th>S</th><th>P kW/m</th>
+              <th>Transit N</th><th>Transit S</th><th>Spread</th><th></th>
+            </tr></thead>
+            <tbody id="cmpBody"></tbody>
+          </table>
+          <div class="cmp-empty" id="cmpEmpty">No rows yet — set inputs, then “➕ Add to table”.</div>
+        </div>
       </div>
     </div>
   </div>
 
+  <div class="explain-group">
+  <h2>Explanations &amp; physics</h2>
   <details><summary>How “force” is defined here — and the height/period scaling</summary>
     <div class="body">
       <p>Your instructor’s rule that wave force “scales sharply with height and period” is real physics.
@@ -297,6 +341,7 @@
       shows every other course.</p>
     </div>
   </details>
+  </div>
 
   <p class="foot">Idealized single-channel model for understanding — not a site forecast. Deep-water wind
   sea (JONSWAP fetch-limited, Pierson–Moskowitz cap; directional components per restricted-fetch method)
@@ -535,6 +580,7 @@ function render(){
    +row("Height amplification by current", "×"+(r.hf||1).toFixed(2));
   // --- directional (quartering-sea) hazard: separate model, per transit heading ---
   const sp=confusedSpread(r.comps), m=1+0.3*clamp01((sp-40)/40);
+  $("qspread").dataset.deg=Math.round(sp); $("qspread").dataset.mult=m.toFixed(2);
   [["qN",0,"qNwhy"],["qS",180,"qSwhy"]].forEach(([pid,t,wid])=>{
     const qh=quarterHaz(r.comps,t,s.V,curToward,blockModel), qm=Math.min(1,qh.Q*m), b=qBand(qm);
     $(pid).textContent=BAND_WORD[b]; $(pid).style.background=BAND_COL[b];
@@ -658,6 +704,94 @@ function drawQuarterRose(comps,m,s){
 
 ["U","phi","V","L","W"].forEach(id=>$(id).addEventListener("input",render));
 render();
+
+// ---- Requirement 2: save the diagrams row (modelbar + 3 SVGs) as a PNG ----
+(function(){
+  function svgToImage(svgEl){
+    return new Promise((resolve,reject)=>{
+      const clone=svgEl.cloneNode(true);
+      clone.querySelectorAll("text").forEach(t=>{ if(!t.getAttribute("font-family"))
+        t.setAttribute("font-family","-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"); });
+      const vb=clone.viewBox&&clone.viewBox.baseVal;
+      const w=(vb&&vb.width)||300, h=(vb&&vb.height)||300;
+      clone.setAttribute("width",w); clone.setAttribute("height",h);
+      const xml=new XMLSerializer().serializeToString(clone);
+      const svg64=btoa(unescape(encodeURIComponent(xml)));
+      const img=new Image();
+      img.onload=()=>resolve({img,w,h}); img.onerror=reject;
+      img.src="data:image/svg+xml;base64,"+svg64;
+    });
+  }
+  async function savePng(){
+    const ids=["schem","polar","qrose"];
+    const results=await Promise.all(ids.map(id=>svgToImage($(id))));
+    const scale=2, pad=14, headerH=44, cellW=300, cellH=300;
+    const totalW=cellW*3+pad*4, totalH=headerH+cellH+pad*3;
+    const canvas=document.createElement("canvas");
+    canvas.width=totalW*scale; canvas.height=totalH*scale;
+    const ctx=canvas.getContext("2d");
+    ctx.scale(scale,scale);
+    ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,totalW,totalH);
+    ctx.fillStyle="#1b2430"; ctx.font="bold 13px -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif";
+    const modelText=$("modelbar").innerText.replace(/\s*\n\s*/g," · ");
+    ctx.fillText(modelText,pad,pad+16);
+    results.forEach((r,i)=>{ const x=pad+i*(cellW+pad), y=headerH+pad; ctx.drawImage(r.img,x,y,cellW,cellH); });
+    canvas.toBlob(blob=>{
+      const url=URL.createObjectURL(blob), a=document.createElement("a");
+      a.href=url; a.download="force-explorer-"+new Date().toISOString().slice(0,10)+".png";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),2000);
+    },"image/png");
+  }
+  $("savePngBtn").addEventListener("click",savePng);
+})();
+
+// ---- Requirement 3: comparison table — snapshot of the LIVE DOM, never recomputed ----
+(function(){
+  const rows=[]; const body=$("cmpBody"), empty=$("cmpEmpty");
+  const activeSeg=id=>{ const b=[...$(id).children].find(x=>x.classList.contains("on")); return b?b.textContent.trim():""; };
+  const readSpread=()=>{ const el=$("qspread");
+    return (el&&el.dataset.deg!=null) ? el.dataset.deg+"° (×"+el.dataset.mult+")" : ""; };
+  function addRow(){
+    rows.push({
+      sea:activeSeg("seamdl"), block:activeSeg("blockmdl"),
+      wind:$("U").value, dir:$("phi").value, cur:$("V").value, set:activeSeg("curdir"),
+      L:$("L").value, W:$("W").value,
+      band:$("bandpill").textContent, bandCol:$("bandpill").style.backgroundColor,
+      Hamp:$("Hamp").textContent, Tp:$("Tp").textContent, S:$("S").textContent, P:$("P").textContent,
+      qN:$("qN").textContent, qNCol:$("qN").style.backgroundColor,
+      qS:$("qS").textContent, qSCol:$("qS").style.backgroundColor,
+      spread:readSpread()
+    });
+    renderRows();
+  }
+  function renderRows(){
+    empty.style.display=rows.length?"none":"";
+    body.innerHTML=rows.map((r,i)=>
+      `<tr><td>${r.sea}</td><td>${r.block}</td><td>${r.wind}</td><td>${r.dir}</td><td>${r.cur}</td><td>${r.set}</td>`
+     +`<td>${r.L}</td><td>${r.W}</td>`
+     +`<td style="color:#fff;background:${r.bandCol}">${r.band}</td>`
+     +`<td>${r.Hamp}</td><td>${r.Tp}</td><td>${r.S}</td><td>${r.P}</td>`
+     +`<td style="color:#fff;background:${r.qNCol}">${r.qN}</td>`
+     +`<td style="color:#fff;background:${r.qSCol}">${r.qS}</td>`
+     +`<td>${r.spread}</td><td class="del" data-i="${i}">✕</td></tr>`).join("");
+  }
+  body.addEventListener("click",e=>{ const td=e.target.closest("td.del"); if(!td) return;
+    rows.splice(+td.dataset.i,1); renderRows(); });
+  $("addRowBtn").addEventListener("click",addRow);
+  $("clearRowsBtn").addEventListener("click",()=>{ rows.length=0; renderRows(); });
+  $("exportCsvBtn").addEventListener("click",()=>{
+    const headers=["Sea","Block","Wind_kt","Dir_deg","Current_kt","Set","L_km","W_km","Band","Hs_w_m","Tp_s","S","P_kWm","TransitN","TransitS","Spread"];
+    const csvRow=vals=>vals.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
+    const lines=[csvRow(headers)].concat(rows.map(r=>csvRow([r.sea,r.block,r.wind,r.dir,r.cur,r.set,r.L,r.W,r.band,r.Hamp,r.Tp,r.S,r.P,r.qN,r.qS,r.spread])));
+    const blob=new Blob([lines.join("\n")],{type:"text/csv"});
+    const url=URL.createObjectURL(blob), a=document.createElement("a");
+    a.href=url; a.download="force-explorer-comparison-"+new Date().toISOString().slice(0,10)+".csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+  });
+  renderRows();
+})();
 </script>
 </body>
 </html>
