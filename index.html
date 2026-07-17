@@ -70,7 +70,7 @@
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>steepness risk</b>. <span style="opacity:.7">build 2026-07-10f (currents+wind public; steepness experimental behind ?steep=1)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>steepness risk</b>. <span style="opacity:.7">build 2026-07-17 (steepness v3 now computed by the shared physics.js module)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -107,6 +107,11 @@
 </main>
 <div id="tip"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Shared wave/steepness physics (ONE source of truth with force_explorer.html + the Node
+     harnesses — Model_Replay_Plan.md step 2). Classic script: its top-level consts (G, KT, …)
+     land in this page's global scope, so the inline script below uses them directly. The deploy
+     recipe ships it alongside index.html (it is already on the repo branch). -->
+<script src="physics.js"></script>
 <script>
 const R2="https://pub-cb8eb71f75d64a57a0d021318ccd0ae7.r2.dev";
 const $=id=>document.getElementById(id);
@@ -144,7 +149,7 @@ const kt = k => Math.round(k/1.852);
    This is a hazard heuristic, NOT a wave model or a wave-height forecast. At each current-overview
    water cell we estimate the local wind-sea from the wind speed and the cell's COMPUTED DIRECTIONAL
    FETCH (upwind open-water distance in the wind's sector — there is no wave field), then apply the
-   wind map's validated wave-action steepening (hazBand) against the local current. It is only shown
+   wind map's validated wave-action steepening (physics.js) against the local current. It is only shown
    in PROTECTED waters — see STEEP_ZONES — because fetch-limited growth cannot represent ocean swell,
    which dominates the open outer coast.
    Threshold-only: bands 0–1 (negligible / mild) are left UNPAINTED so the map stays quiet; only
@@ -163,40 +168,21 @@ const RING=[null,                                       // 0 negligible → no r
   {col:STEEP_COL[2],lw:6.0,a:0.98,r:13}];              // 4 hazardous / breaking
 const RING_LBL=["","Mild — slight steepening","Caution — steepening chop","Rough — steep, short seas","Hazardous — breaking / blocking"];
 const RING_WORD=["none","mild","caution","rough","hazardous"];
-const G=9.81, KT_MS=0.514444;
 // Directional fetch (David 2026-07-10): each steepness cell gets its own upwind open-water distance
 // per 16 compass sectors, ray-marched on the current-overview water mask at tile build. A NW blow
 // down 60 km of strait and the same wind over a 2 km cove no longer produce the same sea. Capped at
 // 60 km: past that the fully-developed (PM) cap governs growth anyway, and beyond-fetch seas mean
 // swell — which this layer does not model (the zones already exclude swell-exposed coast).
 const FETCH_SECTORS=16, FETCH_CAP_KM=60;
-// Capped fetch-limited wind sea (JONSWAP growth capped at the Pierson–Moskowitz fully-developed sea):
-// returns {Hs m, Tp s} for wind U in m/s over fetch F in m. Short fetch ⇒ low, short-period chop —
-// which is exactly the sea that a current steepens fastest, so short-fetch cells still warn when the
-// current is strong, just at higher winds than long-fetch ones.
-function windSea(U,F){
-  if(U<0.5||F<500) return {Hs:0,Tp:0};
-  const Hs_f=4.0*U*Math.sqrt(1.6e-7*F/G);
-  const X=G*F/(U*U), Tp_f=1.0/(3.5*(G/U)*Math.pow(X,-0.33));
-  return { Hs:Math.min(Hs_f, 0.24*U*U/G), Tp:Math.min(Tp_f, 0.72*U) };
-}
-// Verbatim port of hrdps_map.html hazBand: -1 = negligible sea; 0..4 = steepness band.
-// dirFrom = wind FROM bearing (deg); curKt/curToward = current speed (kt) & TOWARD bearing (deg).
-function hazBand(Hs,Tp,dirFrom,curKt,curToward){
-  if(!(Hs>0.05)||!(Tp>0)) return -1;
-  const c0=G*Tp/(2*Math.PI);
-  const Uopp=Math.abs(curKt)*KT_MS*Math.cos((curToward-dirFrom)*Math.PI/180);   // >0 = opposing
-  const L0=c0*Tp, S0=Hs/L0, alpha=-Uopp/c0, disc=1+4*alpha;
-  let band, hf;
-  if(alpha<0 && disc<=0){ band=4; hf=2.5; }             // beyond blocking → breaking
-  else { const x=Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha);
-    hf=Math.min(Math.pow(x,1.5)/Math.sqrt(Math.max(2-x,1e-6)),2.5);
-    const S=Math.pow(x,3.5)/Math.sqrt(Math.max(2-x,1e-6))*S0;
-    band=(!isFinite(S)||S>=0.143)?4 : S>=0.10?3 : S>=0.075?2 : S>=0.05?1 : 0; }
-  const Hamp=Hs*hf;                                       // consequence gate: a tiny sea can't be high-risk
-  if(Hamp<0.3) band=Math.min(band,1); else if(Hamp<0.5) band=Math.min(band,2);
-  return band;
-}
+/* ---- Steepness physics: physics.js (shared module) — the inline model is GONE (2026-07-17) ----
+   Until this build the layer carried a hand-copied, grid-coarsened "v3" copy of the explorer's
+   model (windSea / hazBand / specCore / hazSpecBand, PM r-step 0.1, envelope 0.1, 98.3% band-match
+   to the explorer). That duplicate was the one-physics-source violation the Model Replay dev ref
+   forbids; step 2 of Model_Replay_Plan.md replaced it with the module's own fan via steepCell()
+   (±80°/5° directional components, spectral+saturation blocking at the module's fine grids, fast
+   band-only consequence-gate path — provably band-identical to the explorer's full model). This
+   file now owns only the fetch GEOMETRY (16-sector ray-march + harmonic fetchAt below); the fan
+   and all wave physics live in physics.js. windSea/haz/hazard/KT/G come from the module. */
 // Protected, fetch-limited waters where the steepness estimate is justifiable (tunable after David's
 // validation). Deliberately EXCLUDES the outer WCVI coast, open Queen Charlotte Sound / Hecate, and
 // the swell-exposed western entrance of Juan de Fuca; INCLUDES the channel thresholds that are the
@@ -741,7 +727,7 @@ async function loadSteepOnce(){
            Tp:new Float32Array(ne),fUse:new Float32Array(ne)};
   t.hourOf=h=>h;                        // decode depends on BOTH datasets; cache on the master hour
   // Per steepness cell precompute: its index into the current overview water array (curCell) and its
-  // nearest wind-grid linear index (windCell). Cheap per-hour decode then just reads + runs hazBand.
+  // nearest wind-grid linear index (windCell). Cheap per-hour decode then just reads + runs steepCell.
   const wc=windMan.regions.overview, wCols=wc.cols, wRows=wc.rows;
   const [wW,wS,wE,wN]=wc.bbox, wStepLon=(wE-wW)/(wCols-1), wStepLat=(wN-wS)/(wRows-1);
   const curCell=new Int32Array(ne), windCell=new Int32Array(ne);
@@ -762,6 +748,14 @@ async function loadSteepOnce(){
   t.posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,t.posBuf); gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
   t.spdBuf=gl.createBuffer();
   const cSpan=cols*rows, wSpan=wCols*wRows;
+  const SEC_STEP=360/FETCH_SECTORS;
+  // Fetch at an arbitrary bearing: HARMONIC interpolation (in 1/fetch) between the two adjacent
+  // ray-marched sectors. Fetch behaves like min(L/cosΔ, w/sinΔ) near a channel kink, and linear
+  // interpolation overshoots it badly (11 km where truth is 7.3 in the 47×5 test channel); harmonic
+  // tracks the 1/sin structure and restored head-on/oblique band parity with the explorer.
+  const fetchAt=(fbase,beta)=>{ const p=(((beta/SEC_STEP)%FETCH_SECTORS)+FETCH_SECTORS)%FETCH_SECTORS;
+    const s0=p|0, s1=(s0+1)%FETCH_SECTORS, fr=p-s0;
+    return 1/((1-fr)/fetchKm[fbase+s0]+fr/fetchKm[fbase+s1]); };
   t.decodeSteep=()=>{
     const ci=overview.hourOf(hour), wi=windTile.hourOf(hour);      // each dataset's own hour index
     const cS=ci*2*cSpan, wSb=wi*2*wSpan;
@@ -773,14 +767,18 @@ async function loadSteepOnce(){
       const curKt=cByte/10, curToward=cv[cS+cSpan+gi]*360/255;
       const wByte=wv[wSb+wcell];                                    // wind covers land: never 255 here
       const U=wByte/3.6, dirFrom=wv[wSb+wSpan+wcell]*360/255;        // km/h → m/s, FROM
-      // fetch = upwind open water in the wind's FROM sector (nearest of 16)
-      const sec=Math.round(dirFrom*FETCH_SECTORS/360)%FETCH_SECTORS;
-      const fkm=fetchKm[m*FETCH_SECTORS+sec];
-      const ws=windSea(U, fkm*1000);
-      const b=hazBand(ws.Hs,ws.Tp,dirFrom,curKt,curToward);
-      t.band[m]=b; t.spd[m]=curKt; t.dir[m]=curToward;              // arrows show current SET
-      t.wKt[m]=wByte/1.852; t.wFrom[m]=dirFrom; t.Hs[m]=ws.Hs; t.Tp[m]=ws.Tp; t.fUse[m]=fkm;
-      setQuad(t.spd3,m, b<1.5?DRY:b);                               // bands ≤1 discarded (threshold-only)
+      // Directional-component fan = the MODULE's steepCell (±80°/5°, worst band over components,
+      // largest-Tp system = display — Donelan). This cell's ray-marched 16-sector fetch table goes
+      // in as the fetch PROVIDER (harmonic fetchAt above); spec model only — the map has no model
+      // toggles. (The old inline fan's Ueff<0.5 cutoff vs the module's 0.3 is provably inert:
+      // windSea returns Hs=0 below 0.5 m/s, filtered by the module's own Hs>0.05 check.)
+      const fbase=m*FETCH_SECTORS;
+      const sc=steepCell(U, dirFrom, curKt, curToward, beta=>fetchAt(fbase,beta), "spec");
+      t.spd[m]=curKt; t.dir[m]=curToward;                          // arrows show current SET
+      t.wKt[m]=wByte/1.852; t.wFrom[m]=dirFrom;
+      t.Hs[m]=sc.dom.Hs; t.Tp[m]=sc.dom.Tp; t.fUse[m]=sc.dom.Fkm; // hover shows the dominant sea
+      t.band[m]=sc.band;
+      setQuad(t.spd3,m, sc.band<1.5?DRY:sc.band);                  // bands ≤1 discarded (threshold-only)
     }
   };
   t.arrowGate=t.band;                    // draw arrows only where the water is actually shaded (band≥2)
@@ -880,8 +878,8 @@ function chartSVG(cfg){
 }
 // Physics explainer + call-for-observations, written for a non-physicist. Only built once.
 function buildAbout(){
-  // steepness S(H/L) as the opposing current grows, from the same wave-action math as hazBand()
-  const steepAt=(Hs,Tp,curKt)=>{ const c0=G*Tp/(2*Math.PI), Uopp=curKt*KT_MS, alpha=-Uopp/c0, disc=1+4*alpha;
+  // steepness S(H/L) as the opposing current grows, from the same wave-action math as the module's haz()
+  const steepAt=(Hs,Tp,curKt)=>{ const c0=G*Tp/(2*Math.PI), Uopp=curKt*KT, alpha=-Uopp/c0, disc=1+4*alpha;
     if(alpha<0&&disc<=0) return 0.2; const x=Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha);
     return Math.pow(x,3.5)/Math.sqrt(Math.max(2-x,1e-6))*(Hs/(c0*Tp)); };
   // ---- Chart 1: wave height vs fetch, three wind speeds (live from windSea) ----
@@ -890,14 +888,14 @@ function buildAbout(){
   const chart1=chartSVG({xmin:0,xmax:60,ymin:0,ymax:2.6,xlabel:"fetch — open water upwind (km)",ylabel:"wave height Hs (m)",
     xticks:[0,20,40,60],yticks:[0,0.5,1,1.5,2,2.5],series:c1});
   // ---- Chart 2: steepness vs opposing current, for the short-fetch example sea ----
-  const exHs=0.35, exTp=2.41, c0ex=G*exTp/(2*Math.PI), blockKt=c0ex/4/KT_MS;
+  const exHs=0.35, exTp=2.41, c0ex=G*exTp/(2*Math.PI), blockKt=c0ex/4/KT;
   const c2=[]; for(let cur=0;cur<=blockKt*0.985;cur+=blockKt/70) c2.push([cur,Math.min(0.16,steepAt(exHs,exTp,cur))]);
   const chart2=chartSVG({xmin:0,xmax:blockKt,ymin:0,ymax:0.16,xlabel:"opposing current (kt)",ylabel:"steepness  Hs ÷ wavelength",
     xticks:[0,0.5,1,1.5],yticks:[0,0.05,0.10,0.15],series:[{color:"#0a3d62",pts:c2}],
     hlines:[{y:0.05,color:RING[1].col,label:"mild"},{y:0.075,color:RING[2].col,label:"caution"},{y:0.10,color:RING[3].col,label:"rough"},{y:0.143,color:RING[4].col,label:"breaking"}],
     vlines:[{x:blockKt,color:"#7a1616",label:"blocking"}]});
   // ---- Worked example (computed live) ----
-  const ex=(F,cur)=>{ const ws=windSea(7.72,F*1000), c0=G*ws.Tp/(2*Math.PI), bk=c0/4/KT_MS, band=hazBand(ws.Hs,ws.Tp,0,cur,0);
+  const ex=(F,cur)=>{ const ws=windSea(7.72,F*1000), c0=G*ws.Tp/(2*Math.PI), bk=c0/4/KT, band=haz(ws.Hs,ws.Tp,0,cur,0).band;
     return {Hs:ws.Hs,Tp:ws.Tp,cur,bk,pct:Math.round(cur/bk*100),S:steepAt(ws.Hs,ws.Tp,cur),band}; };
   const A=ex(16,1.0), B=ex(8,1.2);
   const pill=b=>`<span class="bandpill" style="background:${b<1?'#9fb3c8':RING[Math.min(b,4)].col}">${RING_WORD[Math.min(b,4)]}</span>`;

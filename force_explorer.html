@@ -130,6 +130,13 @@
           <b>Spectral + saturation</b> spreads the sea over many frequencies that block at different currents,
           and caps every component at the 1/7 breaking limit — a gradual ramp, and past blocking the height
           plateaus at the breaking chop instead of vanishing.</div></details>
+      <details class="ctl-details"><summary>Experimental Prototypes Description</summary>
+        <div class="body">Two 2026-07-15 additions to the <b>quartering</b> model, kept as independent
+          on/off toggles (defaults on) while their anchors await calibration by the replay review.
+          <b>Whitecap floor</b> = an actively forced sea breaks on its own (ramp 8→22 kt of wind), so a
+          following current can no longer zero the hazard of a whitecapping sea. <b>Surf/broach drive</b>
+          = an overtaking wave long enough to drive the hull (λ ≈ 1–3× boat length) amplifies its
+          component up to ×1.35. Off = the pre-prototype model; steepness bands are unaffected either way.</div></details>
     </div>
       <div id="modelbar" class="modelbar"></div>
       <div class="livehead">
@@ -158,8 +165,13 @@
             <span style="color:#b5179e;font-weight:700">force</span>. Dot = current wind.
             <span id="sens"></span></figcaption></figure>
         <figure>
-          <div class="diagmdl" style="visibility:hidden" aria-hidden="true"><div class="diagmdl-h">&nbsp;</div>
-            <div class="seg"><button>&nbsp;</button></div></div>
+          <!-- Experimental prototypes (David 2026-07-17): INDEPENDENT on/off toggles (not a radio
+               pair like the model segs), defaults ON. They gate the whitecap floor + surf/broach
+               amplifier in the QUARTERING model only — steepness pills never move. -->
+          <div class="diagmdl"><div class="diagmdl-h">Experimental Prototypes</div>
+            <div class="seg" id="protomdl">
+              <button data-p="whitecap" class="on">Whitecap floor</button>
+              <button data-p="surf" class="on">Surf/broach drive</button></div></div>
           <svg id="qrose" viewBox="0 0 300 300"></svg>
           <figcaption class="cap">Heading rose — hazard vs the course <b>you</b> steer (sea fixed): lobes
             off the stern quarter and beam of the sea. Dots = the two channel transits;
@@ -418,6 +430,8 @@ $("blockmdl").addEventListener("click",e=>{ const b=e.target.closest("button"); 
   blockModel=b.dataset.m; [...$("blockmdl").children].forEach(x=>x.classList.toggle("on",x===b)); render(); });
 $("seamdl").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return;
   seaModel=b.dataset.s; [...$("seamdl").children].forEach(x=>x.classList.toggle("on",x===b)); render(); });
+$("protomdl").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return;
+  PROTO[b.dataset.p]=!PROTO[b.dataset.p]; b.classList.toggle("on",PROTO[b.dataset.p]); render(); });
 
 function state(){ setEnv({U:+$("U").value, phi:+$("phi").value, V:+$("V").value, L:+$("L").value, W:+$("W").value, B:+$("B").value, hdg:+$("hdg").value});   // sync the shared model ENV (physics.js)
   return { U:+$("U").value*KT, phi:+$("phi").value, V:+$("V").value, L:+$("L").value, W:+$("W").value, B:+$("B").value, hdg:+$("hdg").value }; }
@@ -433,9 +447,12 @@ function render(){
   const r=compute(s.phi);
   const seaName=seaModel==="dir"?"Directional components":"Single ray";
   const blockName=blockModel==="spec"?"Spectral + saturation":"Monochromatic";
+  // third chip: prototype-toggle state, so captureDiagramsCanvas' modelbar text (and therefore
+  // every snapshot/PDF) records which experimental terms were active for that capture
   $("modelbar").innerHTML=
     `<div class="chip"><div class="name">${seaName}_Sea Model</div></div>`
-   +`<div class="chip"><div class="name">${blockName}_Blocking Model</div></div>`;
+   +`<div class="chip"><div class="name">${blockName}_Blocking Model</div></div>`
+   +`<div class="chip"><div class="name">Whitecap ${PROTO.whitecap?"ON":"off"} · Surf ${PROTO.surf?"ON":"off"}_Prototypes (experimental)</div></div>`;
   drawSchematic(s,r); drawPolar(s);
   // readout
   const b=Math.max(0,r.band);

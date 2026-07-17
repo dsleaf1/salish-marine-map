@@ -2,7 +2,8 @@
    force_explorer.html on 2026-07-16 (regression-proved numerically identical at extraction —
    see quarter_tests.mjs + the extraction identity check). ONE source of truth, consumed by:
      (a) force_explorer.html via <script src="physics.js"> (classic script — works over file://)
-     (b) unified_map.html's steepness layer (pending port — Model_Replay_Plan.md step 2)
+     (b) unified_map.html's steepness layer via steepCell() (ported 2026-07-17 — Model_Replay_Plan.md
+         step 2; the map's previous inline copy of this model is deleted)
      (c) Node harnesses via fe_api.mjs (quarter_tests.mjs, force_sensitivity.mjs,
          gen_justif_data.mjs, and the step-3 nightly divergence scanner).
    NO DOM, no imports. Top-level let/const/function declarations of a classic script land in the
@@ -22,6 +23,14 @@
    expressions textually stable, or update its PATCHES table in the same commit. */
 const ENV={U:15, phi:20, V:1.2, L:16, W:6, B:5, hdg:180};
 function setEnv(o){ for(const k in o) if(k in ENV && o[k]!=null && isFinite(+o[k])) ENV[k]=+o[k]; }
+/* EXPERIMENTAL PROTOTYPE toggles (David's 2026-07-17 decision): the whitecapping floor and the
+   surf/broach (encounter) amplifier stay in the model as TOGGLES, defaults ON — the project
+   pattern: the best current model is the default, toggles preserve the alternates for teaching
+   and review. Their anchors (8→22 kt whitecap ramp, 0.35 surf amplitude, 1→3·L drive band) are
+   expert judgment, UNCALIBRATED against observation; the model-replay expert review
+   (Model_Replay_Plan.md) is the calibration instrument. OFF ⇒ exactly the pre-2026-07-15
+   quartering model (floor inert, encounter ≡ 1). Steepness bands are unaffected either way. */
+const PROTO={whitecap:true, surf:true};
 // same shape (and same kt→m/s wind conversion) as the explorer's old slider-reading state()
 function envState(){ return {U:ENV.U*KT, phi:ENV.phi, V:ENV.V, L:ENV.L, W:ENV.W, B:ENV.B, hdg:ENV.hdg}; }
 
@@ -59,11 +68,19 @@ function haz(Hs,Tp,dirFrom,curKt,curToward){                 // returns band, S,
    zone, not just its asymptote. Fixed 0.05 m/s grid so larger currents evaluate a superset of points
    (monotone by construction). Breaking water also carries more consequence per metre of height, hence
    the (1+0.8·fBrk) weighting. */
+/* PM spectral grid, hoisted 2026-07-17 (perf, for the map's 6,200-cell steepCell decode):
+   SAME loop bounds/step/weight expression/skip as the previous inline computation, run once at
+   init — values and summation order are bit-identical, only the per-call pow/exp cost is gone
+   (624→232 ms in steep_bench.mjs; wSum unchanged per call since skipped entries never join). */
+const SPEC_R=[], SPEC_W=[];
+for(let r=0.6;r<=1.9;r+=0.05){                      // r = f/fp; component phase speed c = c0/r
+  const w=Math.pow(r,-5)*Math.exp(-1.25*Math.pow(r,-4));   // Pierson–Moskowitz spectral shape
+  if(w>1e-6){ SPEC_R.push(r); SPEC_W.push(w); } }
 function specCore(Hs,Tp,Uopp){
   const c0=G*Tp/(2*Math.PI); let sSum=0,wSum=0,eSum=0,bSum=0;
-  for(let r=0.6;r<=1.9;r+=0.05){                    // r = f/fp; component phase speed c = c0/r
-    const c=c0/r, w=Math.pow(r,-5)*Math.exp(-1.25*Math.pow(r,-4));   // Pierson–Moskowitz spectral shape
-    if(!(w>1e-6)) continue; wSum+=w;
+  for(let i=0;i<SPEC_R.length;i++){
+    const r=SPEC_R[i], w=SPEC_W[i], c=c0/r;
+    wSum+=w;
     const S0c=Hs/(2*Math.PI*c*c/G);                 // component calm-water steepness (own wavelength)
     const alpha=-Uopp/c, disc=1+4*alpha;
     const x=(alpha<0&&disc<=0)?2:(Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha));
@@ -76,18 +93,27 @@ function specCore(Hs,Tp,Uopp){
   const S=sSum/wSum, hf=Math.sqrt(eSum/wSum), fBrk=bSum/wSum, Hamp=Hs*hf;
   return {S,hf,fBrk,Hamp,gateH:Hamp*(1+0.8*fBrk)};
 }
-function hazSpec(Hs,Tp,dirFrom,curKt,curToward){
+/* fast=true is a BAND-ONLY path for bulk callers (steepCell: the map decodes ~6,200 cells per
+   timeline scrub; the full envelope fan measured 2.1 s — steep_bench 2026-07-17). It skips the
+   consequence-gate envelope when the skip is PROVABLY band-preserving (the deleted map copy's
+   own gate-skip argument, now at this module's grids): if band<2 the gate's caps to ≤1/≤2 can't
+   change it, and if now.gateH≥0.5 the envelope max (≥ now.gateH) can't bite. Regression-proved
+   band-identical to the full path in test/physics_regression.mjs. NB the fast return's gateH is
+   now.gateH (not the envelope max) — band is unaffected, so fast is for band consumers only. */
+function hazSpec(Hs,Tp,dirFrom,curKt,curToward,fast){
   const c0=G*Tp/(2*Math.PI);
   if(!(Hs>0.05)||!(Tp>0)) return {band:-1,S:0,hf:1,Hamp:0,Uopp:0,c0,L0:c0*Tp,fBrk:0,gateH:0};
   const Uopp=Math.max(0,Math.abs(curKt)*KT*Math.cos((curToward-dirFrom)*Math.PI/180));
   const now=specCore(Hs,Tp,Uopp);
+  let band=now.S>=0.143?4:now.S>=0.10?3:now.S>=0.075?2:now.S>=0.05?1:0;
+  if(fast&&(band<2||now.gateH>=0.5))
+    return {band,S:Math.min(now.S,0.2),hf:now.hf,Hamp:now.Hamp,fBrk:now.fBrk,Uopp,c0,L0:c0*Tp,gateH:now.gateH};
   let gateH=0; const top=Math.ceil(Uopp/0.05)*0.05+1e-9;
   for(let u=0;u<=top;u+=0.05) gateH=Math.max(gateH, specCore(Hs,Tp,u).gateH);
-  let band=now.S>=0.143?4:now.S>=0.10?3:now.S>=0.075?2:now.S>=0.05?1:0;
   if(gateH<0.3) band=Math.min(band,1); else if(gateH<0.5) band=Math.min(band,2);
   return {band,S:Math.min(now.S,0.2),hf:now.hf,Hamp:now.Hamp,fBrk:now.fBrk,Uopp,c0,L0:c0*Tp,gateH}; }
 let blockModel="mono";
-function hazard(Hs,Tp,dirFrom,cur,curTo,model){ return (model||blockModel)==="spec"?hazSpec(Hs,Tp,dirFrom,cur,curTo):haz(Hs,Tp,dirFrom,cur,curTo); }
+function hazard(Hs,Tp,dirFrom,cur,curTo,model,fast){ return (model||blockModel)==="spec"?hazSpec(Hs,Tp,dirFrom,cur,curTo,fast):haz(Hs,Tp,dirFrom,cur,curTo); }
 // idealized channel: paddler mid-channel; along-axis fetch up to length L, across up to half-width
 function fetchKm(phiFromAxisDeg,Lkm,Wkm){ const d=Math.abs(((phiFromAxisDeg%180)+180)%180); // 0..180
   const dd=(d>90?180-d:d)*Math.PI/180, c=Math.max(Math.cos(dd),1e-3), s=Math.max(Math.sin(dd),1e-3);
@@ -138,6 +164,37 @@ function compute(phiDeg, model){                            // full result for a
   return {phiDeg, fetch:worst.Fkm, dom, gov:worst, comps,
           Hs:dom.Hs, Tp:dom.Tp, L0:hd.L0, hf:hd.hf, Hamp:hd.Hamp,
           band:worst.band, S:worst.S, Uopp:worst.Uopp, c0:worst.c0, P, E}; }
+/* MAP / SCANNER ENTRY POINT (step-2 port, 2026-07-17). One steepness cell: the SAME directional
+   fan as compute() (δ ±80° step 5°, Ueff<0.3 skip, Hs>0.05 skip, worst band over components,
+   dominant = max-Tp system), but the fetch comes from a PROVIDER fetchAtKm(fromDeg)→km supplied
+   by the caller. That is the fan-vs-16-sector unification: fetch GEOMETRY belongs to the consumer
+   (unified_map ray-marches 16 sectors per cell and interpolates harmonically in 1/fetch; the
+   idealized channel is from=>fetchKm(from,L,W)), the fan + physics belong here. Reads NO module
+   state except blockModel via hazard() when model is omitted — pass model explicitly from bulk
+   callers. Uses hazard()'s fast band-only path (see hazSpec): full-envelope fan measured 2.1 s
+   per 6,200 cells vs the map's ~300 ms budget. The worst<4 early-exit is kept from the map's
+   old fan (band can't exceed 4) though in spec mode band 4 is unreachable via S (S saturates at
+   1/7 < 0.143 — Force_Explorer_Sensitivity_Analysis.md).
+   Returns {band, dom:{Hs,Tp,from,Fkm}} — band -1 = negligible sea; dom feeds the hover readout.
+   Proved ≡ compute() in band AND dom on the idealized channel (test/physics_regression.mjs). */
+function steepCell(Ums, windFromDeg, curKt, curToward, fetchAtKm, model){
+  let dom=null, worst=-1;
+  for(let d=-80; d<=80; d+=5){
+    const Ueff=Ums*Math.cos(d*Math.PI/180); if(Ueff<0.3) continue;
+    const from=((windFromDeg+d)%360+360)%360;
+    // the km→m→km round-trip mirrors compute() exactly, so dom.Fkm is BIT-identical to compute()'s
+    const F=fetchAtKm(from)*1000, w=windSea(Ueff,F);
+    if(!dom||w.Tp>dom.Tp) dom={Hs:w.Hs,Tp:w.Tp,from,Fkm:F/1000};
+    if(!(w.Hs>0.05)) continue;
+    if(worst<4){ const h=hazard(w.Hs,w.Tp,from,curKt,curToward,model,true);
+      if(h.band>worst) worst=h.band; }
+  }
+  if(worst<0){                       // calm / no viable component — compute()'s fallback, verbatim
+    const F=fetchAtKm(windFromDeg)*1000, w=windSea(Ums,F);
+    const h=hazard(w.Hs,w.Tp,windFromDeg,curKt,curToward,model,true);
+    dom={Hs:w.Hs,Tp:w.Tp,from:windFromDeg,Fkm:F/1000}; worst=h.band;
+  }
+  return {band:worst, dom}; }
 /* DIRECTIONAL (QUARTERING-SEA) HAZARD — a SEPARATE model, deliberately NOT folded into the
    steepness band. Steepness measures whether the sea BREAKS; it says nothing about the ANGLE the
    waves hit a kayak, and capsize literature says danger ≈ breaking × bad-angle: a non-breaking wave
@@ -190,7 +247,7 @@ const clamp01=v=>Math.min(Math.max(v,0),1);
    review exactly like the W anchors. */
 const whitecap=Ukt=>clamp01((Ukt-8)/14);
 function compEnv(c,curKt,curToward,model){
-  const wc=whitecap(c.Uw||0);
+  const wc=PROTO.whitecap?whitecap(c.Uw||0):0;   // experimental toggle; OFF ⇒ floor inert
   let bz=0,Hamp=0,brk=0; const top=Math.ceil(Math.abs(curKt)/0.1)*0.1+1e-9;
   for(let V=0;V<=top;V+=0.1){ const h=hazard(c.Hs,c.Tp,c.from,V,curToward,model);
     if(!h||!(h.Hamp>0.05)) continue;
@@ -203,7 +260,7 @@ function quarterHaz(comps,t,curKt,curToward,model){         // t = paddler headi
   for(const c of comps){ const e=c._env||(c._env=compEnv(c,curKt,curToward,model));
     if(!(e.bz>0)) continue;
     const r=angDiff(c.from,t);                              // 0 = head sea … 180 = following
-    const en=encounter(c,r);                                // surf/broach amplifier (≥1, current-independent)
+    const en=PROTO.surf?encounter(c,r):1;                   // surf/broach amplifier (≥1, current-independent; experimental toggle)
     const q=qWeight(r)*e.bz*en;
     if(q>Q){ Q=q; gov={from:c.from,r,Hamp:e.Hamp,b:e.brk,q,en}; } }
   return {Q:Math.min(1,Q),gov}; }                           // clamp: amplifier can push a component past 1
