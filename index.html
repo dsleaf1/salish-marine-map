@@ -70,7 +70,7 @@
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>steepness risk</b>. <span style="opacity:.7">build 2026-07-17 (steepness v3 now computed by the shared physics.js module)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>steepness risk</b>. <span style="opacity:.7">build 2026-07-17b (steepness now public; computed by the shared physics.js module)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -115,10 +115,10 @@
 <script>
 const R2="https://pub-cb8eb71f75d64a57a0d021318ccd0ae7.r2.dev";
 const $=id=>document.getElementById(id);
-// Steepness is EXPERIMENTAL and hidden by default so the validated currents + wind layers can ship
-// publicly on their own. The author reveals the steepness layer + physics panel with ?steep=1 while
-// it is still being checked against real observations.
-const STEEP_ON = new URLSearchParams(location.search).get("steep")==="1";
+// Steepness (wind-against-current risk) is now PUBLIC alongside the currents + wind layers
+// (David approved 2026-07-17). It stays labelled EXPERIMENTAL in the physics panel — the Model
+// Replay archive-and-replay project is the ongoing check of these model bands against real seas.
+const STEEP_ON = true;
 // [name, center, zoom, key, bbox W,S,E,N] — bboxes MUST match hrdps-ingest/sscofs_mesh.py REGIONS.
 // Order = element ownership priority inside the 0.05° overlaps (earlier region draws, later skips),
 // so translucent neighbours never double-blend into a dark seam.
