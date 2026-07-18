@@ -70,7 +70,7 @@
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-17c (roughness scale Very low–Very high; steepness public; computed by the shared physics.js module)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-18a (roughness scale Very low–Very high; steepness public + "On your course" quartering-sea display; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -81,7 +81,9 @@
         <option value="steep">Roughness (wind vs current)</option>
       </select></div>
     <div class="fld" id="steepStyleFld" style="display:none"><label for="steepStyle">Steep display</label>
-      <select id="steepStyle"><option value="rings" selected>Rings on wind</option><option value="fill">Shaded cells</option></select></div>
+      <select id="steepStyle"><option value="rings" selected>Rings on wind</option><option value="fill">Shaded cells</option><option value="course">On your course</option></select></div>
+    <div class="fld" id="courseFld" style="display:none"><label for="course">Course (steer)</label>
+      <select id="course" title="Shade each cell by the quartering-sea hazard for a paddler steering this heading"></select></div>
     <div class="fld"><label for="region">Region</label><select id="region"></select></div>
     <div class="fld"><label for="base">Base map</label><select id="base"></select></div>
     <div class="fld"><label for="arrows">Arrows</label>
@@ -235,9 +237,13 @@ const MODES={
             legendOver:GRAY_LAND, mesh:false, ringsAlpha:0.5 },   // ringsAlpha = wind-fill opacity in "rings" display
 };
 let mode="current";
-// Steepness has two displays: "rings" (hazard rings + current arrows over the full wind field — the
-// original wind-map format) and "fill" (hazard-shaded cells over a plain coastline). Toggled in-mode.
+// Steepness has THREE displays: "rings" (hazard rings + current arrows over the full wind field — the
+// original wind-map format), "fill" (steepness-band-shaded cells over a plain coastline), and "course"
+// (each cell shaded by the QUARTERING-sea hazard Q for a paddler steering `course`, via physics.js's
+// quarterHaz — the directional model, separate from the steepness band; cutlines = physics.js qBand,
+// v0.4). Toggled in-mode.
 let steepStyle="rings";
+let course=225;                 // paddler heading (course steered), degrees; only used by the "course" display
 // In "rings", GL paints the WIND field (its ramp) and the overlay draws the rings; "fill" paints the
 // band ramp. glMode() picks the ramp; alphaRef() picks which opacity the slider/URL control.
 const glMode=()=> (mode==="steep"&&steepStyle==="rings") ? MODES.wind : MODES[mode];
@@ -512,12 +518,61 @@ function nearestCell(t,lat,lon,maxDeg){
 let hoverLL=null, hoverEv=null, hoverRAF=0;
 function onHover(e){ hoverLL=e.latlng; hoverEv=e.originalEvent; if(!hoverRAF) hoverRAF=requestAnimationFrame(doHover); }
 function hideTip(){ hoverLL=null; tip.style.display="none"; }
+// Where the governing wave sits relative to the paddler (r = angle off the bow, 0…180).
+const sideWord=r=> r<=30?"head sea, on the bow":r<=60?"on the bow quarter":r<=110?"on the BEAM"
+                 :r<=160?"on the STERN QUARTER":"following, astern";
+/* Mini polar Q-rose for the course hover tip: Q(heading) as a filled polar curve, concentric rings at
+   the v0.4 qBand cutlines (coloured per band), a white arm on the steered course (white dashed = the
+   return heading), a cyan tick on the current set. ISOLATED on purpose — rose-in-tip vs a side panel is
+   David's open call, so this stays one self-contained function that can be relocated whole. */
+const QCUT=[0.12,0.28,0.50,0.75];                        // v0.4 cutlines (physics.js qBand) as rose radii
+function courseRoseSVG(t,m,crs){
+  const R=50, cx=62, cy=62;
+  const pt=(ang,rad)=>[cx+rad*Math.sin(ang*Math.PI/180), cy-rad*Math.cos(ang*Math.PI/180)];
+  let poly="";
+  for(let i=0;i<=36;i++){ const a=i*10, q=t.qAt(m,a)||0, [x,y]=pt(a,q*R);
+    poly+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; }
+  poly+="Z";
+  let rings="";
+  for(let i=0;i<QCUT.length;i++)
+    rings+=`<circle cx="${cx}" cy="${cy}" r="${(QCUT[i]*R).toFixed(1)}" fill="none" stroke="${RING[i+1].col}" stroke-width="1" opacity="0.55"/>`;
+  rings+=`<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="#9fb3c8" stroke-width="1"/>`;
+  let ticks="";
+  for(const [a,lbl] of [[0,"N"],[90,"E"],[180,"S"],[270,"W"]]){ const [lx,ly]=pt(a,R+8);
+    ticks+=`<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" font-size="8" fill="#8296ad" text-anchor="middle">${lbl}</text>`; }
+  const [ax,ay]=pt(crs,R), [rx,ry]=pt((crs+180)%360,R);
+  const arm=`<line x1="${cx}" y1="${cy}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#fff" stroke-width="2.4"/>`
+           +`<line x1="${cx}" y1="${cy}" x2="${rx.toFixed(1)}" y2="${ry.toFixed(1)}" stroke="#fff" stroke-width="1" stroke-dasharray="2 2" opacity="0.6"/>`;
+  let cur="";
+  if(t.spd[m]>=0.1){ const [sx,sy]=pt(t.dir[m],R), [s0x,s0y]=pt(t.dir[m],R-7);
+    cur=`<line x1="${s0x.toFixed(1)}" y1="${s0y.toFixed(1)}" x2="${sx.toFixed(1)}" y2="${sy.toFixed(1)}" stroke="#00b4d8" stroke-width="2.4"/>`; }
+  return `<svg width="124" height="124" viewBox="0 0 124 124" style="display:block;margin:5px auto 0">`
+        +rings+ticks
+        +`<path d="${poly}" fill="rgba(255,45,149,0.38)" stroke="#ff2d95" stroke-width="1.6"/>`
+        +cur+arm
+        +`<circle cx="${cx}" cy="${cy}" r="2" fill="#fff"/></svg>`
+        +`<div style="text-align:center;opacity:.6;font-size:11px">Q by heading · white = your course</div>`;
+}
 function doHover(){
   hoverRAF=0; if(!hoverLL) return;
   const lat=hoverLL.lat, lon=hoverLL.lng; let html=null;
   if(mode==="steep" && steepTile&&steepTile.ready){
     decodeTile(steepTile); const t=steepTile, m=nearestCell(t,lat,lon,0.06);
     if(m>=0 && t.wKt[m]===t.wKt[m]){                        // wet cell (not NaN)
+      if(steepStyle==="course" && t.qComps && t.qComps[m]){
+        const Qc=t.qAt(m,course), bc=qBand(Qc), Qr=t.qAt(m,(course+180)%360), br=qBand(Qr), gov=t.qGov(m,course);
+        const col=bc<1?"#9fb3c8":RING[Math.min(bc,4)].col;
+        html=`<b>On course ${compass(course)} (${Math.round(snap16(course))}°) — ${RING_WORD[Math.min(bc,4)]}</b>`
+          +`<div class="hz" style="color:${col}">${bc<1?"No quartering hazard on this heading (head / following / calm)":RING_LBL[Math.min(bc,4)]} · Q ${Qc.toFixed(2)}</div>`;
+        if(gov){ const brk=gov.b>=0.6?"breaking":gov.b>=0.3?"steep, near breaking":"steepening";
+          html+=row("Governing sea", `${gov.Hamp.toFixed(1)} m, ${brk}, from ${compass(gov.from)} — ${sideWord(gov.r)}`);
+          if(gov.en>1.08) html+=`<div class="hz" style="color:${RING[4].col}">surf-driving the stern (broach risk)</div>`; }
+        html+=row("On return", `${compass((course+180)%360)} — ${RING_WORD[Math.min(br,4)]} · Q ${Qr.toFixed(2)}`)
+          +row("Wind", `${Math.round(t.wKt[m])} kt from ${compass(t.wFrom[m])}`)
+          +row("Current", t.spd[m]>=0.1?`${t.spd[m].toFixed(1)} kt toward ${compass(t.dir[m])}`:"slack (&lt;0.1 kt)");
+        if(t.qm[m]>1.02) html+=row("Confused sea", `×${t.qm[m].toFixed(2)} (short-crested — no single brace side)`);
+        html+=courseRoseSVG(t,m,course);
+      } else {
       const band=Math.max(0,t.band[m]|0), col=band<1?"#9fb3c8":RING[Math.min(band,4)].col;
       html=`<b>Roughness — ${RING_WORD[Math.min(band,4)]}</b>`
         +`<div class="hz" style="color:${col}">${band<1?"No steepening (calm / following sea)":RING_LBL[Math.min(band,4)]}</div>`
@@ -525,6 +580,7 @@ function doHover(){
         +row("Current", t.spd[m]>=0.1?`${t.spd[m].toFixed(1)} kt toward ${compass(t.dir[m])} (${Math.round(t.dir[m])}°)`:"slack (&lt;0.1 kt)")
         +row("Wind-sea", t.Hs[m]>0.05?`${t.Hs[m].toFixed(1)} m @ ${t.Tp[m].toFixed(1)} s`:"negligible")
         +row("Fetch", `${t.fUse[m]>=60?"≥60":t.fUse[m].toFixed(0)} km upwind`);
+      }
     }
   } else if(mode==="wind" && windTile&&windTile.ready){
     decodeTile(windTile); const t=windTile, m=nearestCell(t,lat,lon,0.06);
@@ -780,6 +836,48 @@ async function loadSteepOnce(){
       t.band[m]=sc.band;
       setQuad(t.spd3,m, sc.band<1.5?DRY:sc.band);                  // bands ≤1 discarded (threshold-only)
     }
+    if(steepStyle==="course"){ t.buildQuarter(); t.shadeCourse(); t.arrowGate=t.cband; } // Q-bands overwrite spd3
+    else t.arrowGate=t.band;
+  };
+  /* ---- Quartering-sea (course) display ------------------------------------------------------
+     Each cell shaded by the directional hazard Q for a paddler steering `course`, via physics.js's
+     quarterHaz over the SAME ±80°/10° wind-sea fan the steepness layer fans (10° step: q is smoother
+     than the band, so the 5° steepness step isn't needed — see task_quartering_display_port). Cutlines
+     = physics.js qBand (v0.4, DECIDED 2026-07-17). compEnv (the per-component running-max envelope over
+     opposing current) dominates the cost and is COURSE-INDEPENDENT, so it is built once per decoded hour
+     (t.qHour) and course scrubbing is a cheap re-band. Measured on this view: ~1.2 s to build 6,196
+     cells' envelopes, ~6 ms to re-shade a new course. */
+  t.qHour=-1; t.qComps=null; t.qm=new Float32Array(ne); t.cband=new Float32Array(ne);
+  t.buildQuarter=()=>{                   // per-cell comps + spread multiplier for the decoded hour
+    if(t.qHour===t.decodedHour && t.qComps) return;
+    setStatus("Computing course hazard ("+ne.toLocaleString()+" cells)…");
+    const comps=new Array(ne);
+    for(let m=0;m<ne;m++){
+      if(t.wKt[m]!==t.wKt[m]){ comps[m]=null; continue; }         // dry cell
+      const U=t.wKt[m]*KT, dirFrom=t.wFrom[m], curKt=t.spd[m], curTo=t.dir[m], fb=m*FETCH_SECTORS;
+      const cs=[];
+      for(let d=-80; d<=80; d+=10){ const Ums=U*Math.cos(d*Math.PI/180); if(Ums<0.3) continue;
+        const from=((dirFrom+d)%360+360)%360, w=windSea(Ums, fetchAt(fb,from)*1000);
+        if(!(w.Hs>0.05)) continue;
+        cs.push({from,d,Hs:w.Hs,Tp:w.Tp,Uw:t.wKt[m],h:hazard(w.Hs,w.Tp,from,curKt,curTo,"spec")}); }
+      if(!cs.length){ const w=windSea(U, fetchAt(fb,dirFrom)*1000);
+        cs.push({from:dirFrom,d:0,Hs:w.Hs,Tp:w.Tp,Uw:t.wKt[m],h:hazard(w.Hs,w.Tp,dirFrom,curKt,curTo,"spec")}); }
+      comps[m]=cs; t.qm[m]=qMult(confusedSpread(cs));
+    }
+    t.qComps=comps; t.qHour=t.decodedHour;
+    setStatus(loadedSummary());
+  };
+  // Q for one cell on an arbitrary heading, reusing the cached per-component envelope (quarterHaz
+  // memoizes c._env on the comp objects — valid because current+model are fixed for the hour's set).
+  t.qAt=(m,hdg)=>{ const cs=t.qComps&&t.qComps[m]; if(!cs) return NaN;
+    return Math.min(1, quarterHaz(cs,hdg,t.spd[m],t.dir[m],"spec").Q * t.qm[m]); };
+  t.qGov=(m,hdg)=>{ const cs=t.qComps&&t.qComps[m]; if(!cs) return null;
+    return quarterHaz(cs,hdg,t.spd[m],t.dir[m],"spec").gov; };
+  t.shadeCourse=()=>{                    // write course-Q bands into cband + the GL buffer (spd3)
+    for(let m=0;m<ne;m++){ const cs=t.qComps&&t.qComps[m];
+      if(!cs){ t.cband[m]=-1; setQuad(t.spd3,m,DRY); continue; }
+      const b=qBand(t.qAt(m,course)); t.cband[m]=b;
+      setQuad(t.spd3,m, b<1.5?DRY:b); }                            // bands ≤1 discarded, matching "fill"
   };
   t.arrowGate=t.band;                    // draw arrows only where the water is actually shaded (band≥2)
   t.fetchKm=fetchKm;                     // kept for hover readout / verification
@@ -828,6 +926,12 @@ function buildLegend(){
       s+=`<span class="lchip" style="font-weight:600;margin-left:6px">Wind (Beaufort):</span>`+beaufortKey(getAlpha(),false);
     else
       s+=`<span class="lchip" style="opacity:.6">coloured fill = wind (Beaufort — see Wind layer)</span>`;
+  } else if(steepStyle==="course"){
+    const nm=COMPASS[Math.round(((course%360)+360)%360/22.5)%16];
+    s=`<span class="lchip" style="font-weight:600">Quartering-sea risk steering ${nm} (${Math.round(snap16(course))}°):</span>`;
+    for(let i=0;i<STEEP_COL.length;i++)
+      s+=`<span class="lchip" title="${STEEP_SUB[i]}"><i class="lsw" style="background:${blend(STEEP_COL[i],GRAY_LAND,md.alpha)}"></i>${STEEP_LBL[i]}</span>`;
+    s+=`<span class="lchip" style="opacity:.6">roughness for a paddler on this heading · calm / head / following-only seas: unshaded</span>`;
   } else {
     s='<span class="lchip" style="font-weight:600" title="Probability of increasing roughness from opposing wind/current or quartering seas">Probability of increasing roughness (protected waters):</span>';
     for(let i=0;i<STEEP_COL.length;i++)
@@ -1035,11 +1139,14 @@ function setAlpha(a){
   syncOpacityUI(); applyModeGL(); buildLegend(); render(); updateURL();
 }
 // applyMode() re-skins everything from the current `mode`; setMode() is the guarded entry point.
+const snap16=d=>Math.round(((d%360)+360)%360/22.5)%16*22.5;   // nearest of the 16 compass points, in degrees
 function updateSteepControls(){
   $("steepStyleFld").style.display = mode==="steep" ? "" : "none";
   $("windArrowsFld").style.display = (mode==="steep"&&steepStyle==="rings") ? "" : "none";
+  $("courseFld").style.display = (mode==="steep"&&steepStyle==="course") ? "" : "none";
   $("about").style.display = STEEP_ON ? "" : "none";      // physics panel rides with the experimental layer
   $("steepStyle").value=steepStyle;
+  $("course").value = String(snap16(course));
 }
 function applyMode(){
   $("mode").value=mode;
@@ -1062,9 +1169,23 @@ function ensureLayer(){
   setStatus(loadedSummary());
 }
 function setSteepStyle(v){
-  if(v===steepStyle || (v!=="rings"&&v!=="fill")) return;
-  steepStyle=v; updateSteepControls();
+  if(v===steepStyle || (v!=="rings"&&v!=="fill"&&v!=="course")) return;
+  steepStyle=v;
+  if(steepTile) steepTile.decodedHour=-1;   // spd3 holds different bands per display → force a re-decode
+  updateSteepControls();
   applyModeGL(); syncOpacityUI(); buildLegend(); render(); updateURL();
+}
+// Course change: the envelope layer (t.buildQuarter) is course-independent and already built for the
+// hour, so this is just a cheap re-band (shadeCourse) + GL re-upload — no envelope recompute.
+function setCourse(deg){
+  course=((+deg%360)+360)%360;
+  if(mode==="steep"&&steepStyle==="course"&&steepTile&&steepTile.ready){
+    decodeTile(steepTile);                  // no-op if the hour is already decoded (buildQuarter cached)
+    steepTile.shadeCourse();
+    if(gl){ gl.bindBuffer(gl.ARRAY_BUFFER,steepTile.spdBuf); gl.bufferData(gl.ARRAY_BUFFER,steepTile.spd3,gl.DYNAMIC_DRAW); }
+    render();
+  }
+  buildLegend(); updateURL();
 }
 function setMode(next){
   if(!MODES[next] || next===mode || (next==="steep"&&!STEEP_ON) || ((next==="wind"||next==="steep")&&windDisabled)) return;
@@ -1085,7 +1206,8 @@ function updateURL(){
     // `a` is the ACTIVE mode's fill opacity: each mode keeps its own, and a link only ever restores
     // the one it was shared in. The other modes fall back to their defaults.
     const p={mode,lat:c.lat.toFixed(4),lon:c.lng.toFixed(4),z:map.getZoom(),h:hour,a:getAlpha().toFixed(2)};
-    if(mode==="steep") p.st=steepStyle;         // remember the display so a shared steep link restores it
+    if(mode==="steep"){ p.st=steepStyle;        // remember the display so a shared steep link restores it
+      if(steepStyle==="course") p.course=Math.round(course); }  // ...and the heading, for a course link
     history.replaceState(null,"","?"+new URLSearchParams(p));
   },250);
 }
@@ -1106,8 +1228,13 @@ REGIONS.forEach((r,i)=>{ const o=document.createElement("option"); o.value=i; o.
 $("region").onchange=e=>{ const i=+e.target.value;
   if(i<0) map.fitBounds(FULL_EXTENT);
   else { const r=REGIONS[i]; map.setView(r[1], MODES[mode].mesh ? Math.max(r[2],MESH_ZOOM) : r[2]); } };
+// 16-point course control (wet-finger: one tap per compass point, 22.5° resolution; a ?course= link
+// can still carry any heading, snapped to the nearest point for display).
+COMPASS.forEach((name,i)=>{ const o=document.createElement("option");
+  o.value=i*22.5; o.textContent=`${name} · ${Math.round(i*22.5)}°`; $("course").appendChild(o); });
 $("mode").onchange=e=>setMode(e.target.value);
 $("steepStyle").onchange=e=>setSteepStyle(e.target.value);
+$("course").onchange=e=>setCourse(+e.target.value);
 $("windArrows").onchange=()=>{ buildLegend(); render(); };   // legend gains the Beaufort key when on
 $("base").onchange=e=>{ basePref[mode]=e.target.value; setBase(e.target.value); };
 $("arrows").onchange=render;
@@ -1120,7 +1247,8 @@ $("playBtn").onclick=()=>{ if(anim){clearInterval(anim);anim=null;$("playBtn").t
 if(!STEEP_ON){ const o=$("mode").querySelector('option[value="steep"]'); o.disabled=true; o.hidden=true; }
 { const q=new URLSearchParams(location.search), m=q.get("mode");
   if(m && MODES[m] && !(m==="steep"&&!STEEP_ON)) mode=m;
-  const st=q.get("st"); if(st==="rings"||st==="fill") steepStyle=st;   // before applyMode/alphaRef
+  const st=q.get("st"); if(st==="rings"||st==="fill"||st==="course") steepStyle=st;   // before applyMode/alphaRef
+  const co=parseFloat(q.get("course")); if(isFinite(co)) course=((co%360)+360)%360;
   $("mode").value=mode;
   const a=parseFloat(q.get("a"));                  // applies to the URL's mode+display (see updateURL)
   if(isFinite(a)) setActiveAlpha(a); }
