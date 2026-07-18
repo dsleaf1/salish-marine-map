@@ -118,7 +118,7 @@ function hazard(Hs,Tp,dirFrom,cur,curTo,model,fast){ return (model||blockModel)=
 function fetchKm(phiFromAxisDeg,Lkm,Wkm){ const d=Math.abs(((phiFromAxisDeg%180)+180)%180); // 0..180
   const dd=(d>90?180-d:d)*Math.PI/180, c=Math.max(Math.cos(dd),1e-3), s=Math.max(Math.sin(dd),1e-3);
   return Math.min(Lkm/c, (Wkm/2)/s); }
-const BAND_WORD=["none","mild","caution","rough","hazardous"];
+const BAND_WORD=["Very low","Low","Medium","High","Very high"];
 // channel axis is vertical (0° = up = "down the channel toward the paddler at bottom-centre view")
 let curToward=0;                                            // 0 = ebb toward you (N/up); 180 = flood away
 // P (kW/m) from height & period

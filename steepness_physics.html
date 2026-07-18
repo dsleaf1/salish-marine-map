@@ -49,8 +49,8 @@ its height alone.</p>
 Michell (1893) and Stokes for the highest progressive wave, where the crest sharpens to a 120° angle:</p>
 <span class="eq"><span class="var">S</span><sub>max</sub> = <span class="var">H</span> ⁄ <span class="var">L</span> ≈ 1 ⁄ 7 = 0.143
   &nbsp;&nbsp;<span class="cap">in a real irregular sea a significant steepness near 1/10 already means many crests are breaking</span></span>
-<p>The map therefore reports steepness in four bands: <b>mild</b> (S ≳ 0.05), <b>caution</b> (≳ 0.075),
-<b>rough</b> (≳ 0.10) and <b>hazardous / breaking</b> (≳ 0.143).</p>
+<p>The map therefore reports steepness in four bands: <b>low</b> (S ≳ 0.05), <b>medium</b> (≳ 0.075),
+<b>high</b> (≳ 0.10) and <b>very high / breaking</b> (≳ 0.143).</p>
 
 <h2>2 · How wind builds a sea — and why fetch is the lever</h2>
 <p>Wind pushes on the water and waves grow. Two things cap how big they get: the <b>wind speed</b>, and
@@ -186,7 +186,7 @@ document.getElementById("fig2").innerHTML=chartSVG({xmin:0,xmax:blockKt,ymin:0,y
   vlines:[{x:blockKt,color:"#7a1616",label:"blocking"}]})
   +'<figcaption>Steepness of the example sea (0.35 m @ 2.4 s) as an opposing current builds — it runs away toward breaking as the current nears the blocking speed.</figcaption>';
 // Worked-example table
-const RING=[null,{col:"#5b7186"},{col:"#f2b705"},{col:"#e8590c"},{col:"#8e1c6b"}], WORD=["none","mild","caution","rough","hazardous"];
+const RING=[null,{col:"#5b7186"},{col:"#f2b705"},{col:"#e8590c"},{col:"#8e1c6b"}], WORD=["Very low","Low","Medium","High","Very high"];
 const ex=(F,cur)=>{const ws=windSea(7.72,F*1000),c0=G*ws.Tp/(2*Math.PI),bk=c0/4/KT,b=hazBand(ws.Hs,ws.Tp,cur);return{Hs:ws.Hs,Tp:ws.Tp,cur,bk,pct:Math.round(cur/bk*100),S:b.S,band:b.band};};
 const A=ex(16,1.0),B=ex(8,1.2);
 const pill=b=>`<span class="pill" style="background:${b<1?'#9fb3c8':RING[Math.min(b,4)].col}">${WORD[Math.min(b,4)]}</span>`;

@@ -70,7 +70,7 @@
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>steepness risk</b>. <span style="opacity:.7">build 2026-07-17b (steepness now public; computed by the shared physics.js module)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-17c (roughness scale Very low–Very high; steepness public; computed by the shared physics.js module)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -78,7 +78,7 @@
       <select id="mode">
         <option value="current" selected>Currents (SSCOFS)</option>
         <option value="wind">Wind (HRDPS 2.5 km)</option>
-        <option value="steep">Steepness risk (wind vs current)</option>
+        <option value="steep">Roughness (wind vs current)</option>
       </select></div>
     <div class="fld" id="steepStyleFld" style="display:none"><label for="steepStyle">Steep display</label>
       <select id="steepStyle"><option value="rings" selected>Rings on wind</option><option value="fill">Shaded cells</option></select></div>
@@ -155,19 +155,19 @@ const kt = k => Math.round(k/1.852);
    Threshold-only: bands 0–1 (negligible / mild) are left UNPAINTED so the map stays quiet; only
    caution/rough/hazardous shade. Colours escalate amber→orange→magenta (CVD-safe: no green, and not
    a red/green pair), deliberately unlike the current & wind ramps so the layer can't be mistaken. */
-const STEEP_COL=["#f2b705","#e8590c","#8e1c6b"];        // band 2 caution, 3 rough, 4 hazardous/breaking
-const STEEP_LBL=["Caution — steepening chop","Rough — steep, short seas","Hazardous — breaking / near-blocking"];
+const STEEP_COL=["#f2b705","#e8590c","#8e1c6b"];        // band 2 medium, 3 high, 4 very high/breaking
+const STEEP_LBL=["Medium — steepening chop","High — steep, short seas","Very high — breaking / near-blocking"];
 const STEEP_SUB=["wind against current builds a short, stacked sea","confused steep water; avoid in a loaded boat","wave blocking: standing, breaking seas"];
 // "Rings on wind" display: a hazard RING (colour+weight by band) with a cyan current dot+arrow, drawn
 // over the full wind fill — the original wind-map station format. Indexed by band 0..4; band 2/3/4
 // reuse STEEP_COL so the two displays share a palette. band ≤0 draws no ring (wind shows through).
 const RING=[null,                                       // 0 negligible → no ring
-  {col:"#5b7186",lw:2.0,a:0.55,r:8.5},                  // 1 mild
-  {col:STEEP_COL[0],lw:3.5,a:0.95,r:10},               // 2 caution
-  {col:STEEP_COL[1],lw:4.5,a:0.96,r:11.5},             // 3 rough
-  {col:STEEP_COL[2],lw:6.0,a:0.98,r:13}];              // 4 hazardous / breaking
-const RING_LBL=["","Mild — slight steepening","Caution — steepening chop","Rough — steep, short seas","Hazardous — breaking / blocking"];
-const RING_WORD=["none","mild","caution","rough","hazardous"];
+  {col:"#5b7186",lw:2.0,a:0.55,r:8.5},                  // 1 low
+  {col:STEEP_COL[0],lw:3.5,a:0.95,r:10},               // 2 medium
+  {col:STEEP_COL[1],lw:4.5,a:0.96,r:11.5},             // 3 high
+  {col:STEEP_COL[2],lw:6.0,a:0.98,r:13}];              // 4 very high / breaking
+const RING_LBL=["","Low — slight steepening","Medium — steepening chop","High — steep, short seas","Very high — breaking / blocking"];
+const RING_WORD=["Very low","Low","Medium","High","Very high"];
 // Directional fetch (David 2026-07-10): each steepness cell gets its own upwind open-water distance
 // per 16 compass sectors, ray-marched on the current-overview water mask at tile build. A NW blow
 // down 60 km of strait and the same wind over a 2 km cove no longer produce the same sea. Capped at
@@ -519,7 +519,7 @@ function doHover(){
     decodeTile(steepTile); const t=steepTile, m=nearestCell(t,lat,lon,0.06);
     if(m>=0 && t.wKt[m]===t.wKt[m]){                        // wet cell (not NaN)
       const band=Math.max(0,t.band[m]|0), col=band<1?"#9fb3c8":RING[Math.min(band,4)].col;
-      html=`<b>Steepness — ${RING_WORD[Math.min(band,4)]}</b>`
+      html=`<b>Roughness — ${RING_WORD[Math.min(band,4)]}</b>`
         +`<div class="hz" style="color:${col}">${band<1?"No steepening (calm / following sea)":RING_LBL[Math.min(band,4)]}</div>`
         +row("Wind", `${Math.round(t.wKt[m])} kt from ${compass(t.wFrom[m])} (${Math.round(t.wFrom[m])}°)`)
         +row("Current", t.spd[m]>=0.1?`${t.spd[m].toFixed(1)} kt toward ${compass(t.dir[m])} (${Math.round(t.dir[m])}°)`:"slack (&lt;0.1 kt)")
@@ -819,7 +819,7 @@ function buildLegend(){
     s='<span class="lchip" style="font-weight:600">Wind (Beaufort):</span>'+beaufortKey(md.alpha,true);
   } else if(steepStyle==="rings"){
     // rings drawn as an open circle (coloured border); fill behind = wind (Beaufort)
-    s='<span class="lchip" style="font-weight:600">Steepness rings · fill = wind:</span>';
+    s='<span class="lchip" style="font-weight:600">Roughness rings · fill = wind:</span>';
     for(let bnd=1;bnd<=4;bnd++)
       s+=`<span class="lchip"><i class="lsw" style="border:3px solid ${RING[bnd].col};background:transparent;border-radius:50%"></i>${RING_LBL[bnd]}</span>`;
     s+=`<span class="lchip"><i class="lsw" style="border-radius:50%;background:#00b4d8;border-color:#023047"></i>current set (arrow)</span>`;
@@ -829,7 +829,7 @@ function buildLegend(){
     else
       s+=`<span class="lchip" style="opacity:.6">coloured fill = wind (Beaufort — see Wind layer)</span>`;
   } else {
-    s='<span class="lchip" style="font-weight:600">Steepness (protected waters):</span>';
+    s='<span class="lchip" style="font-weight:600" title="Probability of increasing roughness from opposing wind/current or quartering seas">Probability of increasing roughness (protected waters):</span>';
     for(let i=0;i<STEEP_COL.length;i++)
       s+=`<span class="lchip" title="${STEEP_SUB[i]}"><i class="lsw" style="background:${blend(STEEP_COL[i],GRAY_LAND,md.alpha)}"></i>${STEEP_LBL[i]}</span>`;
     s+=`<span class="lchip" style="opacity:.6">calm / following seas: unshaded</span>`;
@@ -853,7 +853,7 @@ Map: [link]   Reply here or email [contact]. Thanks — every report helps calib
 const NOTES={
   current:"Covers Puget Sound → Queen Charlotte Sound (south edge — <b>Haida Gwaii is outside SSCOFS</b>). Zoomed out: whole-coast ~2 km overview; zoom in (≥ z10): native FVCOM mesh tiles (~40–90 m in narrows) load automatically for the water in view. Arrows show <b>set</b> (where the water goes). SSCOFS is a model — official CHS/NOAA predictions remain authoritative at the tightest narrows.",
   wind:"HRDPS 2.5 km whole-extent field, one resolution at every zoom (there is no finer wind tile). Arrows point <b>downwind</b> (the model stores the direction the wind blows <i>from</i>). Wind is drawn over land as well as water; place names and coastline are drawn on top. Beaufort bins match the standalone wind map exactly.",
-  steep:"<b>Steepness risk</b> — a wind-against-current hazard heuristic, <b>not a wave forecast</b>. <b>Rings on wind</b> shows the full HRDPS wind field with a hazard ring + cyan current arrow wherever the current is steepening the sea; <b>Shaded cells</b> paints the bands over a plain coastline (switch with <b>Steep display</b>). Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>. <b>Full method and how to help check it: “How the steepness estimate works” below.</b>",
+  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. <b>Rings on wind</b> shows the full HRDPS wind field with a roughness ring + cyan current arrow wherever the current is steepening the sea; <b>Shaded cells</b> paints the bands over a plain coastline (switch with <b>Steep display</b>). Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>. <b>Full method and how to help check it: “How the steepness estimate works” below.</b>",
 };
 // Small SVG line-chart generator (self-contained, no libraries). Points are in data units.
 function chartSVG(cfg){
@@ -956,7 +956,7 @@ function buildAbout(){
     the wave-on-current relation, the waves shorten by a factor <span class="var">x</span> = <span class="var">k</span>₀⁄<span class="var">k</span>
     set by <span class="var">α</span> = −<span class="var">U</span><sub>opp</sub>⁄<span class="var">c</span>₀, and the steepness climbs as</p>
     <span class="eq"><span class="var">S</span> ≈ ( <span class="var">x</span><sup>3.5</sup> ⁄ √(2−<span class="var">x</span>) )·<span class="var">S</span>₀
-      &nbsp;&nbsp;<span class="cap">the map bins S: ≥0.05 mild · ≥0.075 caution · ≥0.10 rough · ≥0.143 (≈1⁄7) breaking</span></span>
+      &nbsp;&nbsp;<span class="cap">the map bins S: ≥0.05 low · ≥0.075 medium · ≥0.10 high · ≥0.143 (≈1⁄7) breaking</span></span>
     <p>When the opposing current reaches <b>a quarter of the wave speed</b> the waves can no longer make
     headway — they stop, pile up and break. That is the classic wave-blocking limit:</p>
     <span class="eq"><span class="var">U</span><sub>opp</sub> ≥ <span class="var">c</span>₀ ⁄ 4
