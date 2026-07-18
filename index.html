@@ -70,7 +70,7 @@
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-18a (roughness scale Very low–Very high; steepness public + "On your course" quartering-sea display; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-18b (readout snap tightened: no more land-tap / off-plume roughness readouts; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -509,6 +509,13 @@ const COMPASS=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W
 const compass=d=>COMPASS[Math.round(((d%360)+360)%360/22.5)%16];
 const beauF=kmh=>{ let f=0; while(f<W_EDGES.length && kmh>=W_EDGES[f]) f++; return f; };
 function row(k,v){ return `<div><span class="k">${k}:</span> ${v}</div>`; }
+/* Snap radius for the readout. The steep tile holds ONLY wet in-zone cells, so a generous radius
+   snaps land taps (and out-of-zone hovers, e.g. just east of a wind plume) kilometres to the nearest
+   wet cell and shows ITS readout — a wrong answer, seen by David on phone (Q-rose on land taps) and
+   desktop (roughness east of a San Juans plume). 0.016° ≈ 0.7 of the 0.0225° grid cell: any point ON
+   a cell is within 0.0135° (half-diagonal, lon cos-scaled) of its centre, so on-water taps always
+   hit, while points >~1.8 km from water get no tip. Also covers the mesh (~0.004° cells). */
+const SNAP_DEG=0.016;
 function nearestCell(t,lat,lon,maxDeg){
   let best=-1, bd=maxDeg*maxDeg, cosm=Math.cos(lat*Math.PI/180);
   for(let i=0;i<t.ne;i++){ const dlo=(t.cx[i]-lon)*cosm, dla=t.cy[i]-lat, d=dlo*dlo+dla*dla;
@@ -557,7 +564,7 @@ function doHover(){
   hoverRAF=0; if(!hoverLL) return;
   const lat=hoverLL.lat, lon=hoverLL.lng; let html=null;
   if(mode==="steep" && steepTile&&steepTile.ready){
-    decodeTile(steepTile); const t=steepTile, m=nearestCell(t,lat,lon,0.06);
+    decodeTile(steepTile); const t=steepTile, m=nearestCell(t,lat,lon,SNAP_DEG);
     if(m>=0 && t.wKt[m]===t.wKt[m]){                        // wet cell (not NaN)
       if(steepStyle==="course" && t.qComps && t.qComps[m]){
         const Qc=t.qAt(m,course), bc=qBand(Qc), Qr=t.qAt(m,(course+180)%360), br=qBand(Qr), gov=t.qGov(m,course);
@@ -583,14 +590,14 @@ function doHover(){
       }
     }
   } else if(mode==="wind" && windTile&&windTile.ready){
-    decodeTile(windTile); const t=windTile, m=nearestCell(t,lat,lon,0.06);
+    decodeTile(windTile); const t=windTile, m=nearestCell(t,lat,lon,SNAP_DEG);
     if(m>=0 && !isNaN(t.spd[m])){
       html=`<b>Wind</b>`
         +row("Speed", `${Math.round(t.spd[m])} km/h · ${Math.round(t.spd[m]/1.852)} kt · F${beauF(t.spd[m])}`)
         +row("From", `${compass(t.dir[m])} (${Math.round(t.dir[m])}°)`);
     }
   } else if(mode==="current"){
-    let best=-1,bt=null,bd=0.05*0.05, cosm=Math.cos(lat*Math.PI/180);
+    let best=-1,bt=null,bd=SNAP_DEG*SNAP_DEG, cosm=Math.cos(lat*Math.PI/180);
     for(const t of activeTiles()){ decodeTile(t);
       for(let i=0;i<t.ne;i++){ const s=t.spd[i]; if(isNaN(s)) continue;
         const dlo=(t.cx[i]-lon)*cosm, dla=t.cy[i]-lat, d=dlo*dlo+dla*dla;
