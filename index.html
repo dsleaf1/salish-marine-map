@@ -133,7 +133,7 @@
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-18e (phone: installable PWA shell — manifest + home-screen icons, no service worker; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-18f (phone: tap-readout no longer flashes shut on touch — dismiss on ✕ / real pan-zoom / empty tap only; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -722,10 +722,15 @@ function doHover(){
   if(y+th>innerHeight-6) y=ev.clientY-pad-th;
   tip.style.left=Math.max(4,x)+"px"; tip.style.top=Math.max(4,y)+"px";
 }
-map.on("mousemove",onHover);
-map.on("mouseout",hideTip);
+// Desktop = cursor-follow tip driven by mousemove; touch = tap-driven pinned panel. On touch the
+// readout must NOT react to the mousemove/mouseout iOS synthesises around a tap, or the panel flashes
+// open and shut in <0.2 s (it appears on the tap's `click`, then a stray emulated mouseout/mousemove
+// immediately calls hideTip). In pinMode() we therefore ignore those and dismiss only on explicit
+// intent: the ✕, a tap that resolves to no data (handled in doHover), or a real pan/zoom gesture.
+map.on("mousemove",e=>{ if(!pinMode()) onHover(e); });
+map.on("mouseout", ()=>{ if(!pinMode()) hideTip(); });
 map.on("click",onHover);            // tap readout on touch devices
-map.on("movestart zoomstart",hideTip);
+map.on("dragstart zoomstart",hideTip);   // a genuine drag/zoom gesture — NOT the incidental movestart/inertia that follows a tap
 
 let meshMan=null, fieldMan=null, windMan=null, hour=0, TIMES=[], anim=null;
 let RUN_CUR=null, RUN_WIND=null, windDisabled=false;
@@ -1343,7 +1348,7 @@ map.on("moveend zoomend",()=>{ updateTiles(); updateURL(); });
 // Region select = navigation shortcut; tile loading is automatic from the viewport.
 { const o=document.createElement("option"); o.value=-1; o.textContent="Full coast (overview)"; $("region").appendChild(o); }
 REGIONS.forEach((r,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=r[0]; $("region").appendChild(o); });
-$("region").onchange=e=>{ const i=+e.target.value;
+$("region").onchange=e=>{ hideTip(); const i=+e.target.value;   // jumping regions no longer auto-hides via movestart
   if(i<0) map.fitBounds(FULL_EXTENT);
   else { const r=REGIONS[i]; map.setView(r[1], MODES[mode].mesh ? Math.max(r[2],MESH_ZOOM) : r[2]); } };
 // 16-point course control (wet-finger: one tap per compass point, 22.5° resolution; a ?course= link
