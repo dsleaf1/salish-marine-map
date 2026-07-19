@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a3d62">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Salish Map">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Unified Marine Map — currents · wind · steepness (WebGL)</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
@@ -37,6 +43,17 @@
        background:rgba(17,24,32,.94);color:#fff;font-size:12px;line-height:1.5;
        padding:8px 10px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.3)}
   #tip b{color:#fff} #tip .k{color:#9fb3c8} #tip .hz{font-weight:700}
+  /* Touch (pinMode): the readout pins to the bottom of the viewport instead of following the finger,
+     so a thumb never covers the numbers. A ✕ — and tapping empty map — dismisses it. The desktop
+     following-tip keeps position:fixed + inline left/top (pointer-events:none so it never blocks a
+     hover). Class toggled in doHover(); the ✕ + body live as persistent children of #tip. */
+  #tip.pinned{position:static;left:auto;top:auto;max-width:none;pointer-events:auto;
+       position:fixed;left:8px;right:8px;bottom:8px;max-height:62vh;overflow-y:auto;padding-top:12px}
+  #tip .tipClose{display:none}
+  #tip.pinned .tipClose{display:flex;align-items:center;justify-content:center;position:absolute;
+       top:2px;right:2px;width:44px;height:44px;z-index:1;background:rgba(17,24,32,.55);border:none;
+       border-radius:8px;color:#cdd8e4;font-size:18px;line-height:1;cursor:pointer}
+  #tip.pinned .tipBody>*:first-child{padding-right:42px}   /* keep the title clear of the ✕ */
   /* explanation / call-for-observations */
   details.about{margin-top:14px;border:1px solid var(--line);border-radius:10px;background:#fff}
   details.about>summary{cursor:pointer;padding:11px 14px;font-weight:600;font-size:13px;list-style:none}
@@ -65,12 +82,58 @@
   table.wex th,table.wex td{border:1px solid var(--line);padding:6px 9px;text-align:left}
   table.wex th{background:#f0f4f8} table.wex td.n{text-align:right;font-variant-numeric:tabular-nums}
   .bandpill{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;font-weight:700;font-size:12px}
+  /* ---------- phone layout (Unified_Map_Phone_Plan step 1; desktop untouched) ----------
+     Body becomes a fixed 100dvh column: one-line header, the control bar kept as-is per David's
+     step-0 decision (compacted, ≥44px targets), then the map takes every remaining pixel with the
+     timeline directly above it; opening About scrolls within <main>. The legend turns into a
+     collapsible overlay on the map (DOM moves live in mobileLayout()). dvh — with a vh fallback —
+     tracks iOS Safari's URL-bar collapse; the visualViewport wiring re-measures the map. */
+  @media (max-width:640px){
+    body{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+    header{padding:7px 12px;flex:0 0 auto}
+    header h1{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;
+         padding:8px;max-width:none;width:100%}
+    .bar{flex:0 0 auto;gap:6px 8px;margin-bottom:6px}
+    .fld{flex:1 1 45%;min-width:0;gap:2px}
+    .fld label{font-size:11px}
+    .fld select{width:100%;min-height:44px;padding:6px 8px}
+    .chk input{width:22px;height:22px}
+    #opacity{width:100%;height:32px;margin:2px 0}
+    .timewrap{flex:1 1 100%;min-width:0}
+    #time{height:44px}
+    #playBtn{min-width:48px;min-height:44px}
+    #timeLabel{min-width:0;font-size:12px}
+    /* wet-finger: fat slider thumbs on a slim custom track (native thumbs are ~12px = too small to
+       grab), and a 44px About tap row. #time already reserves a 44px-tall hit area (above). */
+    #time,#opacity{-webkit-appearance:none;appearance:none;background:transparent}
+    #time::-webkit-slider-runnable-track,#opacity::-webkit-slider-runnable-track{height:5px;background:#c7d2de;border-radius:3px}
+    #time::-moz-range-track,#opacity::-moz-range-track{height:5px;background:#c7d2de;border-radius:3px}
+    #time::-webkit-slider-thumb,#opacity::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+        width:26px;height:26px;border-radius:50%;background:#0a3d62;border:2px solid #fff;
+        box-shadow:0 1px 3px rgba(0,0,0,.3);margin-top:-11px}
+    #time::-moz-range-thumb,#opacity::-moz-range-thumb{width:26px;height:26px;border-radius:50%;
+        background:#0a3d62;border:2px solid #fff}
+    details.about>summary{padding:13px 14px;min-height:44px}
+    #map{flex:1 1 240px;height:auto;min-height:180px;border-radius:8px}
+    .status{flex:0 0 auto;margin:4px 0 0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .note{display:none}                /* per-mode hint; its content is covered by the About panel */
+    details.about{flex:0 0 auto;margin:6px 0 0}
+    details.about>summary{padding:9px 12px}
+    /* legend → collapsible overlay on the map; mobileLayout() moves the node inside #map */
+    #map .legend{position:absolute;left:8px;right:60px;bottom:8px;z-index:1100;margin:0;display:none;
+         background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;
+         padding:8px;max-height:45%;overflow:auto;box-shadow:0 2px 10px rgba(0,0,0,.2)}
+    #map .legend.open{display:flex}
+    #legendBtn{position:absolute;right:8px;bottom:8px;z-index:1101;min-width:44px;min-height:44px;
+         font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-18b (readout snap tightened: no more land-tap / off-plume roughness readouts; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-18e (phone: installable PWA shell — manifest + home-screen icons, no service worker; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -257,13 +320,27 @@ const PTL=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Vancouver',weekday:
 // Lock the view to the model: can't zoom out past the SSCOFS extent or pan off it.
 const map=L.map("map",{zoomAnimation:false,fadeAnimation:false,
   maxBounds:L.latLngBounds(FULL_EXTENT).pad(0.12),maxBoundsViscosity:1.0});
+// The bookmarked ?lat/lon/z(/h), captured ONCE at script time: updateURL() starts rewriting the
+// query string as soon as the map first moves, so a later reader sees its own echo — h was the
+// cold-load restore miss's other half (a slow manifest fetch let updateURL overwrite ?h with 0
+// before boot() read it back).
+const URL_VIEW=(()=>{ const q=new URLSearchParams(location.search);
+  const lat=parseFloat(q.get("lat")), lon=parseFloat(q.get("lon")), z=parseInt(q.get("z"),10);
+  return { view:(isFinite(lat)&&isFinite(lon)&&isFinite(z))?{lat,lon,z}:null, h:parseInt(q.get("h"),10) }; })();
 // Fit to the model extent and lock min-zoom there. Done via a helper because on first load of the
 // deployed page the map box can still report 0×0 at script time — then fitBounds resolves to world
 // zoom and setMinZoom pins it there (the "whole globe" bug). Re-fit once after layout to correct it.
-function fitExtent(){ map.setMinZoom(0); map.invalidateSize(); map.fitBounds(FULL_EXTENT,{animate:false}); map.setMinZoom(map.getZoom()); }
+// A re-fit must never discard a bookmarked view: the guards can fire either side of boot()'s
+// applyURL() (that race WAS the cold-load restore miss), so the view is re-applied right here and
+// the order stops mattering.
+function fitExtent(){ map.setMinZoom(0); map.invalidateSize(); map.fitBounds(FULL_EXTENT,{animate:false}); map.setMinZoom(map.getZoom());
+  if(URL_VIEW.view){ const v=URL_VIEW.view; map.setView([v.lat,v.lon],Math.max(v.z,map.getMinZoom()),{animate:false}); } }
 fitExtent();
-requestAnimationFrame(()=>{ if(map.getSize().x<80 || map.getZoom()<1) fitExtent(); });
-addEventListener("load",()=>{ if(map.getSize().x<80 || map.getZoom()<1) fitExtent(); });
+// getMinZoom()<1 = the extent fit itself never took: a URL view restored above can leave zoom≥1
+// while minZoom stayed unlocked at 0, which the two original checks alone would wrongly pass.
+const fitOK=()=> map.getSize().x>=80 && map.getZoom()>=1 && map.getMinZoom()>=1;
+requestAnimationFrame(()=>{ if(!fitOK()) fitExtent(); });
+addEventListener("load",()=>{ if(!fitOK()) fitExtent(); });
 /* Overlay stacking. The GL/arrow canvases must live INSIDE mapPane, in a pane of their own:
    mapPane carries a transform, so it is a stacking context, and anything parented to it (a labels
    pane, however high its z-index) can never rise above a canvas that is mapPane's sibling in the
@@ -499,12 +576,34 @@ function drawWindArrowsOn(ctx){
   }
 }
 map.on("move zoomend resize",render);
+// Viewport-size changes Leaflet's own trackResize can miss: iOS Safari's URL-bar collapse/expand
+// (a visualViewport resize, on some versions without a window resize) and rotation. One debounced
+// path re-measures the container; invalidateSize fires the map's "resize" → render when the size
+// really changed, and the explicit render() covers the no-op case so syncOverlayPos re-pins the
+// GL/arrow canvases either way.
+let vpTimer=null;
+function onViewportChange(){ clearTimeout(vpTimer);
+  vpTimer=setTimeout(()=>{ if(window.mobileLayout) mobileLayout();   // breakpoint crossing rides this path too
+    map.invalidateSize({animate:false}); render(); },120); }
+addEventListener("resize",onViewportChange);
+addEventListener("orientationchange",onViewportChange);
+if(window.visualViewport) visualViewport.addEventListener("resize",onViewportChange);
 
 /* ---------- hover / tap readout ----------
    Point at the map to read the model at that spot: steepness (band + wind, current, wind-sea, fetch),
    wind (speed/Beaufort/direction), or current (speed/set), per the active layer. Coalesced to one
    animation frame per move so brute-force nearest-cell stays cheap. Tap does the same on touch. */
 const tip=$("tip");
+// #tip = [✕ button][.tipBody]. The readout HTML goes into .tipBody so the persistent ✕ survives each
+// re-render (innerHTML on #tip itself would wipe it). ✕ only shows in pinned mode (CSS).
+const tipClose=document.createElement("button");
+tipClose.className="tipClose"; tipClose.textContent="✕"; tipClose.setAttribute("aria-label","Close readout");
+tipClose.onclick=e=>{ e.stopPropagation(); hideTip(); };
+const tipBody=document.createElement("div"); tipBody.className="tipBody";
+tip.append(tipClose,tipBody);
+// Pin the readout (vs. follow the cursor) on touch/phone: coarse pointer OR the mobile layout width.
+// Re-evaluated per readout so a resize across the breakpoint switches behaviour without reload.
+const pinMode=()=> matchMedia("(pointer:coarse)").matches || matchMedia("(max-width:640px)").matches;
 const COMPASS=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
 const compass=d=>COMPASS[Math.round(((d%360)+360)%360/22.5)%16];
 const beauF=kmh=>{ let f=0; while(f<W_EDGES.length && kmh>=W_EDGES[f]) f++; return f; };
@@ -524,7 +623,10 @@ function nearestCell(t,lat,lon,maxDeg){
 }
 let hoverLL=null, hoverEv=null, hoverRAF=0;
 function onHover(e){ hoverLL=e.latlng; hoverEv=e.originalEvent; if(!hoverRAF) hoverRAF=requestAnimationFrame(doHover); }
-function hideTip(){ hoverLL=null; tip.style.display="none"; }
+function hideTip(){ hoverLL=null; tip.style.display="none"; tip.classList.remove("pinned"); }
+// Re-run the readout at the last-pointed spot after the data underneath it changes (hour scrub, steep
+// display / course change) so a pinned panel refreshes in place instead of showing stale numbers.
+function refreshTip(){ if(hoverLL && tip.style.display!=="none") doHover(); }
 // Where the governing wave sits relative to the paddler (r = angle off the bow, 0…180).
 const sideWord=r=> r<=30?"head sea, on the bow":r<=60?"on the bow quarter":r<=110?"on the BEAM"
                  :r<=160?"on the STERN QUARTER":"following, astern";
@@ -606,8 +708,14 @@ function doHover(){
       +row("Speed", `${bt.spd[best].toFixed(1)} kt`)
       +row("Set", `toward ${compass(bt.dir[best])} (${Math.round(bt.dir[best])}°)`);
   }
-  if(!html){ tip.style.display="none"; return; }
-  tip.innerHTML=html; tip.style.display="block";
+  if(!html){ hideTip(); return; }
+  tipBody.innerHTML=html; tip.style.display="block";
+  if(pinMode()){
+    // pinned to the bottom of the viewport by CSS; clear any leftover follow-position inline styles
+    tip.classList.add("pinned"); tip.style.left=tip.style.top="";
+    return;
+  }
+  tip.classList.remove("pinned");
   const pad=14, ev=hoverEv, tw=tip.offsetWidth, th=tip.offsetHeight;
   let x=ev.clientX+pad, y=ev.clientY+pad;
   if(x+tw>innerWidth-6) x=ev.clientX-pad-tw;
@@ -1163,6 +1271,7 @@ function applyMode(){
   // Every tile re-decodes: hour indices differ per dataset, and the cached hour is now stale.
   for(const t of [overview,windTile,steepTile,...Object.values(tiles)]) if(t) t.decodedHour=-1;
   ensureLayer(); updateTiles(); render(); updateURL();
+  hideTip();                                // the readout's shape + pointed cell differ across layers
 }
 // Each mode's whole-extent layer is fetched on first use and cached: a wind bookmark never pays the
 // 1.7 MB currents overview, and a currents session never pays the 3.4 MB wind tile.
@@ -1181,6 +1290,7 @@ function setSteepStyle(v){
   if(steepTile) steepTile.decodedHour=-1;   // spd3 holds different bands per display → force a re-decode
   updateSteepControls();
   applyModeGL(); syncOpacityUI(); buildLegend(); render(); updateURL();
+  refreshTip();                             // rings/shaded/course readouts differ — refresh in place
 }
 // Course change: the envelope layer (t.buildQuarter) is course-independent and already built for the
 // hour, so this is just a cheap re-band (shadeCourse) + GL re-upload — no envelope recompute.
@@ -1192,7 +1302,7 @@ function setCourse(deg){
     if(gl){ gl.bindBuffer(gl.ARRAY_BUFFER,steepTile.spdBuf); gl.bufferData(gl.ARRAY_BUFFER,steepTile.spd3,gl.DYNAMIC_DRAW); }
     render();
   }
-  buildLegend(); updateURL();
+  buildLegend(); updateURL(); refreshTip();   // heading changed → update Q-rose + governing-sea lines
 }
 function setMode(next){
   if(!MODES[next] || next===mode || (next==="steep"&&!STEEP_ON) || ((next==="wind"||next==="steep")&&windDisabled)) return;
@@ -1201,7 +1311,7 @@ function setMode(next){
 function setHour(x){
   hour=Math.max(0,Math.min(TIMES.length-1,x)); $("time").value=hour;
   $("timeLabel").textContent=TIMES.length?PTL.format(new Date(TIMES[hour]))+" (+"+hour+"h)":"";
-  render(); updateURL();
+  render(); updateURL(); refreshTip();      // scrubbed to a new hour → refresh a pinned readout in place
 }
 
 /* ---------- bookmarkable view: ?mode=&lat=&lon=&z=&h= ---------- */
@@ -1222,10 +1332,11 @@ function updateURL(){
 // fires moveend -> updateTiles, so a still-"current" mode would download every mesh tile in view
 // before the wind layer even appeared.
 function applyURL(){
-  const q=new URLSearchParams(location.search);
-  const lat=parseFloat(q.get("lat")), lon=parseFloat(q.get("lon")), z=parseInt(q.get("z"),10);
-  if(isFinite(lat)&&isFinite(lon)&&isFinite(z)) map.setView([lat,lon],Math.max(z,map.getMinZoom()));
-  return parseInt(q.get("h"),10);
+  // reads the script-time URL_VIEW capture, NOT location.search: by the time boot()'s manifests
+  // land, updateURL() has usually rewritten the query string already (see URL_VIEW).
+  const v=URL_VIEW.view;
+  if(v) map.setView([v.lat,v.lon],Math.max(v.z,map.getMinZoom()));
+  return URL_VIEW.h;
 }
 map.on("moveend zoomend",()=>{ updateTiles(); updateURL(); });
 
@@ -1262,6 +1373,33 @@ if(!STEEP_ON){ const o=$("mode").querySelector('option[value="steep"]'); o.disab
 updateSteepControls();
 syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value); $("note").innerHTML=NOTES[mode];
 buildAbout();
+
+/* ---------- phone layout DOM (pairs with the @media (max-width:640px) block) ----------
+   The CSS owns all sizing; only the two moves CSS can't express are done here: the header
+   description goes into the About panel (one-line header) and the legend becomes a collapsible
+   overlay INSIDE #map with a ≥44px "Key" toggle. Both are reversed if the viewport crosses back
+   over the breakpoint, so the desktop DOM is untouched at ≥641px. Runs after buildAbout() — that
+   sets aboutBody.innerHTML and would wipe the moved description. */
+const mobileMQ=matchMedia("(max-width:640px)");
+const legendBtn=document.createElement("button");
+legendBtn.id="legendBtn"; legendBtn.textContent="Key";
+legendBtn.onclick=()=>{ const open=$("legend").classList.toggle("open"); legendBtn.textContent=open?"✕":"Key"; };
+// the overlay lives inside the map container: keep its taps/scrolls from panning the map under it
+L.DomEvent.disableClickPropagation(legendBtn);
+L.DomEvent.disableClickPropagation($("legend")); L.DomEvent.disableScrollPropagation($("legend"));
+const headerDesc=document.querySelector("header p");   // captured once — it moves between homes
+let mobileApplied=null;                                 // guard: only touch the DOM on a real crossing
+window.mobileLayout=function(){
+  const on=mobileMQ.matches; if(on===mobileApplied) return; mobileApplied=on;
+  if(on){ $("aboutBody").prepend(headerDesc); $("map").append($("legend"),legendBtn); }
+  else { document.querySelector("header").append(headerDesc); $("map").before($("legend")); legendBtn.remove(); }
+  map.invalidateSize({animate:false});
+};
+mobileLayout();
+// crossings are also picked up by onViewportChange (debounced resize path) — this direct listener
+// just makes the switch immediate when the browser delivers the media-query change event
+mobileMQ.addEventListener("change",mobileLayout);
+
 if(initGL()) boot();
 
 async function boot(){
