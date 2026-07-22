@@ -23,6 +23,11 @@
   .bar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
   .fld{display:flex;flex-direction:column;gap:3px}
   .fld label{font-size:12px;color:var(--muted);font-weight:600}
+  /* Course-steer arrow: rotated by JS (transform:rotate(<course>deg)) to point in the compass
+     direction of the selected heading, right next to the select showing its text/degrees. */
+  .courseRow{display:flex;align-items:center;gap:8px}
+  .courseRow select{flex:1 1 auto}
+  .courseArrow{flex:0 0 auto;transform-origin:50% 50%;transition:transform .15s linear}
   select{font:inherit;border:1px solid #d7dde6;border-radius:8px;padding:9px 10px}
   select option:disabled{color:#aab2bd}
   button{font:inherit;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer}
@@ -90,6 +95,8 @@
     .fld{flex:1 1 45%;min-width:0;gap:2px}
     .fld label{font-size:11px}
     .fld select{width:100%;min-height:44px;padding:6px 8px}
+    .courseRow select{width:auto}      /* keep room for the course arrow beside it */
+    .courseArrow{width:30px;height:30px}
     .chk input{width:22px;height:22px}
     /* ± nudge buttons flank the slider: a 5-point tap beats a wet-finger drag on a 26px thumb.
        The field takes a whole row (the default .fld 45% basis left the slider ~13px once the
@@ -150,7 +157,7 @@
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22j (Course (steer) select in Roughness → On your course now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -163,7 +170,12 @@
     <div class="fld" id="steepStyleFld" style="display:none"><label for="steepStyle">Steep display</label>
       <select id="steepStyle"><option value="rings" selected>Rings on wind</option><option value="fill">Shaded cells</option><option value="course">On your course</option></select></div>
     <div class="fld" id="courseFld" style="display:none"><label for="course">Course (steer)</label>
-      <select id="course" title="Shade each cell by the quartering-sea hazard for a paddler steering this heading"></select></div>
+      <div class="courseRow">
+        <select id="course" title="Shade each cell by the quartering-sea hazard for a paddler steering this heading"></select>
+        <svg id="courseArrow" class="courseArrow" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+          <path d="M12 2 L12 21 M12 2 L6.5 9 M12 2 L17.5 9" stroke="var(--ink)" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div></div>
     <div class="fld" id="regionFld"><label for="region">Region</label><select id="region"></select></div>
     <div class="fld" id="baseFld"><label for="base">Base map</label><select id="base"></select></div>
     <div class="fld" id="arrowsFld"><label for="arrows">Arrows</label>
@@ -1442,7 +1454,11 @@ function updateSteepControls(){
   $("courseFld").style.display = (mode==="steep"&&steepStyle==="course") ? "" : "none";
   $("steepStyle").value=steepStyle;
   $("course").value = String(snap16(course));
+  updateCourseArrow();
 }
+// Points the course-steer arrow (next to the Course select) at the compass heading itself: the
+// glyph is drawn pointing up (north, 0deg) so a plain CSS rotate by the bearing (both clockwise) lines it up.
+function updateCourseArrow(){ $("courseArrow").style.transform=`rotate(${snap16(course)}deg)`; }
 function applyMode(){
   $("mode").value=mode;
   updateSteepControls();
@@ -1484,6 +1500,7 @@ function setCourse(deg){
     render();
   }
   buildLegend(); updateURL(); refreshTip();   // heading changed → update Q-rose + governing-sea lines
+  updateCourseArrow();
 }
 function setMode(next){
   if(!MODES[next] || next===mode || (next==="steep"&&!STEEP_ON) || ((next==="wind"||next==="steep")&&windDisabled)) return;
