@@ -17,7 +17,7 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v3";   // 2026-07-22b: phone timeline ◀ ▶ hour-steppers replace play
+const CACHE_VERSION = "salishmap-shell-v4";   // 2026-07-22c: uniform arrow lattice (drawArrows strides on the grid)
 
 const SHELL = [
   "./",
