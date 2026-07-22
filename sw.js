@@ -17,7 +17,7 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v9";   // 2026-07-22h: arrows on/off button + no SW on dev origins
+const CACHE_VERSION = "salishmap-shell-v10";   // 2026-07-22i: phone hides the redundant Wind arrows checkbox
 
 const SHELL = [
   "./",
