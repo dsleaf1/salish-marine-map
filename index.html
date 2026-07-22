@@ -56,34 +56,6 @@
        top:2px;right:2px;width:44px;height:44px;z-index:1;background:rgba(17,24,32,.55);border:none;
        border-radius:8px;color:#cdd8e4;font-size:18px;line-height:1;cursor:pointer}
   #tip.pinned .tipBody>*:first-child{padding-right:42px}   /* keep the title clear of the ✕ */
-  /* explanation / call-for-observations */
-  details.about{margin-top:14px;border:1px solid var(--line);border-radius:10px;background:#fff}
-  details.about>summary{cursor:pointer;padding:11px 14px;font-weight:600;font-size:13px;list-style:none}
-  details.about>summary::-webkit-details-marker{display:none}
-  details.about>summary::before{content:"▸ ";color:var(--muted)}
-  details.about[open]>summary::before{content:"▾ "}
-  details.about .body{padding:2px 16px 16px;font-size:13px;color:#333;line-height:1.55}
-  details.about .body h4{margin:16px 0 5px;font-size:13px}
-  details.about .body p{margin:7px 0}
-  .callout{margin-top:14px;border:1px dashed #b0863a;background:#fdf7ec;border-radius:8px;padding:12px 14px}
-  .callout h4{margin:0 0 6px;color:#8a5a12}
-  .callout textarea{width:100%;min-height:150px;margin-top:8px;font:inherit;font-size:12px;
-       border:1px solid var(--line);border-radius:6px;padding:8px;resize:vertical;background:#fff}
-  .callout button{margin-top:6px}
-  details.about .body h4{color:#0a3d62}
-  .eq{display:block;background:#f5f7fa;border:1px solid var(--line);border-radius:6px;
-      padding:9px 12px;margin:9px 0;font-size:14px;overflow-x:auto;
-      font-family:"Cambria Math",Georgia,"Times New Roman",serif}
-  .eq .var{font-style:italic}
-  .eq .cap{color:var(--muted);font-style:normal;font-size:12px;font-family:inherit}
-  .chartwrap{display:flex;flex-wrap:wrap;gap:18px;margin:10px 0}
-  .chartwrap figure{margin:0;flex:1 1 300px;min-width:280px}
-  .chartwrap figcaption{font-size:12px;color:var(--muted);margin-top:4px}
-  .chartwrap svg{max-width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:8px}
-  table.wex{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
-  table.wex th,table.wex td{border:1px solid var(--line);padding:6px 9px;text-align:left}
-  table.wex th{background:#f0f4f8} table.wex td.n{text-align:right;font-variant-numeric:tabular-nums}
-  .bandpill{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;font-weight:700;font-size:12px}
   /* offline controls + two-clock staleness banner (Unified_Map_Phone_Plan step 4). One compact
      row under the status line on desktop; the phone media block below grows the buttons to
      wet-finger size. Chip colours = run-age bands (see updateStale for the thresholds). */
@@ -126,14 +98,14 @@
         box-shadow:0 1px 3px rgba(0,0,0,.3);margin-top:-11px}
     #time::-moz-range-thumb,#opacity::-moz-range-thumb{width:26px;height:26px;border-radius:50%;
         background:#0a3d62;border:2px solid #fff}
-    details.about>summary{padding:13px 14px;min-height:44px}
+    /* Base map + Arrows are fixed on the phone (Esri terrain / densest) — controls hidden,
+       two fewer control rows so the map gets the screen */
+    #baseFld,#arrowsFld{display:none}
     #map{flex:1 1 240px;height:auto;min-height:180px;border-radius:8px}
     .status{flex:0 0 auto;margin:4px 0 0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .offbar{flex:0 0 auto;margin-top:6px}
     .offbar button{min-height:44px;flex:1 1 40%}
-    .note{display:none}                /* per-mode hint; its content is covered by the About panel */
-    details.about{flex:0 0 auto;margin:6px 0 0}
-    details.about>summary{padding:9px 12px}
+    .note{display:none}                /* per-mode hint; hidden to give the map the room */
     /* legend → collapsible overlay on the map; mobileLayout() moves the node inside #map */
     #map .legend{position:absolute;left:8px;right:60px;bottom:8px;z-index:1100;margin:0;display:none;
          background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;
@@ -147,7 +119,7 @@
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-18g (offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22a (phone: bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -162,8 +134,8 @@
     <div class="fld" id="courseFld" style="display:none"><label for="course">Course (steer)</label>
       <select id="course" title="Shade each cell by the quartering-sea hazard for a paddler steering this heading"></select></div>
     <div class="fld"><label for="region">Region</label><select id="region"></select></div>
-    <div class="fld"><label for="base">Base map</label><select id="base"></select></div>
-    <div class="fld"><label for="arrows">Arrows</label>
+    <div class="fld" id="baseFld"><label for="base">Base map</label><select id="base"></select></div>
+    <div class="fld" id="arrowsFld"><label for="arrows">Arrows</label>
       <select id="arrows"><option value="0">Off</option><option value="26">Normal</option><option value="18" selected>Dense</option><option value="12">Denser</option></select></div>
     <div class="fld chk" id="windArrowsFld" style="display:none">
       <input type="checkbox" id="windArrows"><label for="windArrows">Wind arrows</label></div>
@@ -185,10 +157,6 @@
     <span class="savedlist" id="savedList"></span>
   </div>
   <p class="note" id="note"></p>
-  <details class="about" id="about">
-    <summary>How the steepness estimate works — and how you can help check it</summary>
-    <div class="body" id="aboutBody"></div>
-  </details>
 </main>
 <div id="tip"></div>
 <script src="vendor/leaflet.js"></script>
@@ -1373,181 +1341,11 @@ function buildLegend(){
   }
   $("legend").innerHTML=s;
 }
-// Kayak-forum summary (David posts this to gather ground-truth). Kept in one place so the copy box
-// and any future share feature stay identical. [contact] is a placeholder David fills before posting.
-const FORUM_SUMMARY=
-`Free experimental "wave-steepness" map for BC & WA inside waters (Puget Sound to Queen Charlotte Strait) — looking for paddlers to sanity-check it.
-
-It combines NOAA's Salish Sea current model (SSCOFS) with Environment Canada's HRDPS 2.5 km wind forecast. For every patch of protected water it estimates the local wind-driven sea (from the wind speed and the open-water fetch upwind, worked out from the coastline for 16 wind directions), then checks whether the tidal current is running against that sea. Wind against current shortens and steepens waves — the classic tide-rip chop — so the map flags where and when that is likely, in four grades from mild to breaking. It updates hourly over ~2 days and you can scrub the timeline.
-
-It is a heuristic, NOT a wave forecast: no ocean swell, no wave build-up time, no shoaling over reefs. So I'd really value real-world checks. If you paddle a spot shown on the map:
-- Did the rough/steep zones match what you actually found (and the timing, on the ebb/flood)?
-- Any known nasty spots it MISSED, or calm water it wrongly flagged?
-- Roughly what wind and tide state were you in?
-
-Map: [link]   Reply here or email [contact]. Thanks — every report helps calibrate it.`;
-
 const NOTES={
   current:"Covers Puget Sound → Queen Charlotte Sound (south edge — <b>Haida Gwaii is outside SSCOFS</b>). Zoomed out: whole-coast ~2 km overview; zoom in (≥ z10): native FVCOM mesh tiles (~40–90 m in narrows) load automatically for the water in view. Arrows show <b>set</b> (where the water goes). SSCOFS is a model — official CHS/NOAA predictions remain authoritative at the tightest narrows.",
   wind:"HRDPS 2.5 km whole-extent field, one resolution at every zoom (there is no finer wind tile). Arrows point <b>downwind</b> (the model stores the direction the wind blows <i>from</i>). Wind is drawn over land as well as water; place names and coastline are drawn on top. Beaufort bins match the standalone wind map exactly.",
-  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. <b>Rings on wind</b> shows the full HRDPS wind field with a roughness ring + cyan current arrow wherever the current is steepening the sea; <b>Shaded cells</b> paints the bands over a plain coastline (switch with <b>Steep display</b>). Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>. <b>Full method and how to help check it: “How the steepness estimate works” below.</b>",
+  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. <b>Rings on wind</b> shows the full HRDPS wind field with a roughness ring + cyan current arrow wherever the current is steepening the sea; <b>Shaded cells</b> paints the bands over a plain coastline (switch with <b>Steep display</b>). Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
 };
-// Small SVG line-chart generator (self-contained, no libraries). Points are in data units.
-function chartSVG(cfg){
-  const w=cfg.w||340,h=cfg.h||210,P={l:46,r:12,t:12,b:38}, iw=w-P.l-P.r, ih=h-P.t-P.b;
-  const X=x=>P.l+(x-cfg.xmin)/(cfg.xmax-cfg.xmin)*iw, Y=y=>P.t+ih-(y-cfg.ymin)/(cfg.ymax-cfg.ymin)*ih;
-  let g=`<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif" font-size="10">`;
-  g+=`<line x1="${P.l}" y1="${P.t}" x2="${P.l}" y2="${P.t+ih}" stroke="#98a2b3"/><line x1="${P.l}" y1="${P.t+ih}" x2="${P.l+iw}" y2="${P.t+ih}" stroke="#98a2b3"/>`;
-  for(const t of cfg.xticks){ const x=X(t); g+=`<line x1="${x}" y1="${P.t+ih}" x2="${x}" y2="${P.t+ih+4}" stroke="#98a2b3"/><text x="${x}" y="${P.t+ih+15}" text-anchor="middle" fill="#667085">${t}</text>`; }
-  for(const t of cfg.yticks){ const y=Y(t); g+=`<line x1="${P.l-4}" y1="${y}" x2="${P.l}" y2="${y}" stroke="#98a2b3"/><text x="${P.l-7}" y="${y+3}" text-anchor="end" fill="#667085">${t}</text>`; }
-  g+=`<text x="${P.l+iw/2}" y="${h-4}" text-anchor="middle" fill="#1b2430">${cfg.xlabel}</text>`;
-  g+=`<text transform="translate(12,${P.t+ih/2}) rotate(-90)" text-anchor="middle" fill="#1b2430">${cfg.ylabel}</text>`;
-  for(const hl of (cfg.hlines||[])){ const y=Y(hl.y);
-    g+=`<line x1="${P.l}" y1="${y}" x2="${P.l+iw}" y2="${y}" stroke="${hl.color}" stroke-dasharray="3 3" opacity=".8"/>`;
-    if(hl.label) g+=`<text x="${P.l+3}" y="${y-2}" fill="${hl.color}">${hl.label}</text>`; }
-  for(const v of (cfg.vlines||[])){ const x=X(v.x);
-    g+=`<line x1="${x}" y1="${P.t}" x2="${x}" y2="${P.t+ih}" stroke="${v.color}" stroke-dasharray="2 3"/>`;
-    if(v.label) g+=`<text x="${x-3}" y="${P.t+9}" text-anchor="end" fill="${v.color}">${v.label}</text>`; }
-  for(const s of cfg.series){ let d=""; s.pts.forEach((p,i)=>{ d+=(i?"L":"M")+X(p[0]).toFixed(1)+" "+Y(p[1]).toFixed(1); });
-    g+=`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"/>`;
-    if(s.label){ const lp=s.pts[s.pts.length-1]; g+=`<text x="${X(lp[0])-3}" y="${Y(lp[1])-4}" text-anchor="end" fill="${s.color}" font-weight="700">${s.label}</text>`; } }
-  return g+`</svg>`;
-}
-// Physics explainer + call-for-observations, written for a non-physicist. Only built once.
-function buildAbout(){
-  // steepness S(H/L) as the opposing current grows, from the same wave-action math as the module's haz()
-  const steepAt=(Hs,Tp,curKt)=>{ const c0=G*Tp/(2*Math.PI), Uopp=curKt*KT, alpha=-Uopp/c0, disc=1+4*alpha;
-    if(alpha<0&&disc<=0) return 0.2; const x=Math.abs(alpha)<1e-9?1:(-1+Math.sqrt(disc))/(2*alpha);
-    return Math.pow(x,3.5)/Math.sqrt(Math.max(2-x,1e-6))*(Hs/(c0*Tp)); };
-  // ---- Chart 1: wave height vs fetch, three wind speeds (live from windSea) ----
-  const winds=[[5.14,"10 kt","#3288bd"],[7.72,"15 kt","#e8590c"],[10.29,"20 kt","#8e1c6b"]];
-  const c1=winds.map(([u,lab,col])=>{ const pts=[]; for(let F=0;F<=60;F+=1) pts.push([F,windSea(u,F*1000).Hs]); return {color:col,label:lab,pts}; });
-  const chart1=chartSVG({xmin:0,xmax:60,ymin:0,ymax:2.6,xlabel:"fetch — open water upwind (km)",ylabel:"wave height Hs (m)",
-    xticks:[0,20,40,60],yticks:[0,0.5,1,1.5,2,2.5],series:c1});
-  // ---- Chart 2: steepness vs opposing current, for the short-fetch example sea ----
-  const exHs=0.35, exTp=2.41, c0ex=G*exTp/(2*Math.PI), blockKt=c0ex/4/KT;
-  const c2=[]; for(let cur=0;cur<=blockKt*0.985;cur+=blockKt/70) c2.push([cur,Math.min(0.16,steepAt(exHs,exTp,cur))]);
-  const chart2=chartSVG({xmin:0,xmax:blockKt,ymin:0,ymax:0.16,xlabel:"opposing current (kt)",ylabel:"steepness  Hs ÷ wavelength",
-    xticks:[0,0.5,1,1.5],yticks:[0,0.05,0.10,0.15],series:[{color:"#0a3d62",pts:c2}],
-    hlines:[{y:0.05,color:RING[1].col,label:"mild"},{y:0.075,color:RING[2].col,label:"caution"},{y:0.10,color:RING[3].col,label:"rough"},{y:0.143,color:RING[4].col,label:"breaking"}],
-    vlines:[{x:blockKt,color:"#7a1616",label:"blocking"}]});
-  // ---- Worked example (computed live) ----
-  const ex=(F,cur)=>{ const ws=windSea(7.72,F*1000), c0=G*ws.Tp/(2*Math.PI), bk=c0/4/KT, band=haz(ws.Hs,ws.Tp,0,cur,0).band;
-    return {Hs:ws.Hs,Tp:ws.Tp,cur,bk,pct:Math.round(cur/bk*100),S:steepAt(ws.Hs,ws.Tp,cur),band}; };
-  const A=ex(16,1.0), B=ex(8,1.2);
-  const pill=b=>`<span class="bandpill" style="background:${b<1?'#9fb3c8':RING[Math.min(b,4)].col}">${RING_WORD[Math.min(b,4)]}</span>`;
-  const exRow=(lab,f)=>`<tr><th>${lab}</th><td class="n">${f(A)}</td><td class="n">${f(B)}</td></tr>`;
-
-  $("aboutBody").innerHTML=`
-    <p style="margin-bottom:2px">
-      <a href="steepness_physics.pdf" target="_blank" rel="noopener"
-        style="display:inline-block;font-weight:600;background:#0a3d62;color:#fff;padding:7px 13px;border-radius:7px;text-decoration:none">📄 Physics write-up (PDF)</a>
-      <a href="force_explorer.html" target="_blank" rel="noopener"
-        style="display:inline-block;font-weight:600;background:#0a3d62;color:#fff;padding:7px 13px;border-radius:7px;text-decoration:none;margin-left:6px">🧮 Interactive force explorer</a>
-      <span style="color:#667085;font-size:12px;margin-left:8px">printable · with references · we keep expanding these</span></p>
-    <p><b>The short version.</b> Where wind blows <i>against</i> a tidal current, waves bunch up short
-    and steep — the choppy, standing water of a tide rip. This layer estimates where and when that
-    happens in BC and Washington inside waters, and grades it from mild to breaking. Below is exactly
-    how it gets there, with the equations and two charts drawn live from the very formulas the map runs.</p>
-
-    <h4>1 · How wind builds a sea — and why fetch is the lever</h4>
-    <p>Wind pushes on the water and waves grow. Two things limit how big they get: the <b>wind speed</b>,
-    and the <b>fetch</b> — the distance of open water the wind blows over before it reaches you. Close to
-    an upwind shore the sea is small; the further the open water stretches upwind, the more the waves
-    build, until they reach a “fully developed” size for that wind and grow no more. A breeze down the
-    length of a strait raises a real sea; the same breeze across a narrow channel raises ripples.</p>
-    <p>That is why this map computes fetch <b>directionally</b>. At every water cell it looks upwind and
-    measures how far open water runs before hitting land, and it does this for <b>16 compass directions</b>.
-    When the forecast wind blows from a given direction, the map uses the fetch in that direction — so
-    the same wind speed produces very different seas depending only on which way it blows.</p>
-    <div class="chartwrap"><figure>${chart1}<figcaption>Wave height vs fetch, from the app’s growth
-      formula. Each curve rises then flattens at its “fully developed” ceiling — more fetch stops
-      helping once the sea matures.</figcaption></figure></div>
-
-    <h4>2 · How the app gets wave height (Hs) and period (Tp)</h4>
-    <p>It uses the standard <b>fetch-limited growth laws</b> (the JONSWAP field-experiment fit), capped at
-    the <b>Pierson–Moskowitz</b> fully-developed sea. With wind speed <span class="var">U</span> (m/s),
-    fetch <span class="var">F</span> (m) and gravity <span class="var">g</span> = 9.81:</p>
-    <span class="eq"><span class="var">H</span><sub>s</sub> = 4·<span class="var">U</span>·√( 1.6×10⁻⁷ · <span class="var">F</span> ⁄ <span class="var">g</span> )
-      &nbsp;&nbsp;<span class="cap">significant wave height — grows with wind, and with the square-root of fetch</span></span>
-    <span class="eq"><span class="var">T</span><sub>p</sub> = 1 ⁄ [ 3.5·(<span class="var">g</span>⁄<span class="var">U</span>)·(<span class="var">gF</span>⁄<span class="var">U</span>²)<sup>−0.33</sup> ]
-      &nbsp;&nbsp;<span class="cap">peak period — longer fetch ⇒ longer, faster waves</span></span>
-    <span class="eq"><span class="var">H</span><sub>s</sub> ≤ 0.24·<span class="var">U</span>²⁄<span class="var">g</span> &nbsp;,&nbsp;
-      <span class="var">T</span><sub>p</sub> ≤ 0.72·<span class="var">U</span>
-      &nbsp;&nbsp;<span class="cap">fully-developed ceilings (Pierson–Moskowitz): the flat tops in the chart above</span></span>
-    <p>The key subtlety: <b>both height and period rise with fetch, but period rises faster.</b> A
-    longer fetch makes waves taller <i>and</i> longer — and longer waves are less steep and harder for a
-    current to trip. So bigger is not automatically rougher, as the example below shows.</p>
-
-    <h4>3 · How an opposing current steepens — and blocks — the sea</h4>
-    <p>Waves in deep water travel at a speed set by their period, and carry a length to match:</p>
-    <span class="eq"><span class="var">c</span>₀ = <span class="var">g</span>·<span class="var">T</span><sub>p</sub> ⁄ 2π
-      &nbsp;(wave speed) &nbsp;,&nbsp; <span class="var">L</span>₀ = <span class="var">c</span>₀·<span class="var">T</span><sub>p</sub> (wavelength)
-      &nbsp;&nbsp;<span class="cap">steepness is height ÷ length: S₀ = H<sub>s</sub> ⁄ L₀</span></span>
-    <p>Only the part of the current pointing <i>into</i> the waves matters. With <span class="var">θ</span>
-    the angle between the current’s set and the direction the wind blows from:</p>
-    <span class="eq"><span class="var">U</span><sub>opp</sub> = <span class="var">V</span><sub>current</sub>·cos <span class="var">θ</span>
-      &nbsp;&nbsp;<span class="cap">head-on current is fully opposing; a cross-current barely counts; a following current does nothing</span></span>
-    <p>A wave riding onto an opposing current keeps its period but is forced to slow and <b>shorten</b>;
-    conserving its energy (wave-action), it grows <b>taller</b>. Both effects raise the steepness. Solving
-    the wave-on-current relation, the waves shorten by a factor <span class="var">x</span> = <span class="var">k</span>₀⁄<span class="var">k</span>
-    set by <span class="var">α</span> = −<span class="var">U</span><sub>opp</sub>⁄<span class="var">c</span>₀, and the steepness climbs as</p>
-    <span class="eq"><span class="var">S</span> ≈ ( <span class="var">x</span><sup>3.5</sup> ⁄ √(2−<span class="var">x</span>) )·<span class="var">S</span>₀
-      &nbsp;&nbsp;<span class="cap">the map bins S: ≥0.05 low · ≥0.075 medium · ≥0.10 high · ≥0.143 (≈1⁄7) breaking</span></span>
-    <p>When the opposing current reaches <b>a quarter of the wave speed</b> the waves can no longer make
-    headway — they stop, pile up and break. That is the classic wave-blocking limit:</p>
-    <span class="eq"><span class="var">U</span><sub>opp</sub> ≥ <span class="var">c</span>₀ ⁄ 4
-      &nbsp;&nbsp;<span class="cap">short (slow) waves have a low c₀, so they block at a modest current — which is why short-fetch chop is dangerous</span></span>
-    <div class="chartwrap"><figure>${chart2}<figcaption>Steepness of the example sea (0.35 m @ 2.4 s) as an
-      opposing current builds. It runs away toward the breaking line as the current nears the blocking
-      speed (≈${blockKt.toFixed(1)} kt here).</figcaption></figure></div>
-
-    <h4>4 · Worked example — small shifts, big change</h4>
-    <p>Same 15-knot wind at one spot beside a channel. The wind <b>veers about 25°</b> so that instead of
-    blowing along the channel it blows across it — the upwind fetch drops from 16 km to 8 km — and at the
-    same time the ebb <b>strengthens from 1.0 to 1.2 knots</b> against the waves. Neither change is large:</p>
-    <table class="wex"><tr><th></th><th>A · along-channel</th><th>B · across-channel</th></tr>
-      ${exRow("Wind",()=>"15 kt")}
-      ${exRow("Fetch upwind",a=>a===A?"16 km":"8 km")}
-      ${exRow("Wave height H<sub>s</sub>",a=>a.Hs.toFixed(2)+" m")}
-      ${exRow("Wave period T<sub>p</sub>",a=>a.Tp.toFixed(1)+" s")}
-      ${exRow("Opposing current",a=>a.cur.toFixed(1)+" kt")}
-      ${exRow("Blocking current (c₀⁄4)",a=>a.bk.toFixed(1)+" kt")}
-      ${exRow("Current ÷ blocking",a=>a.pct+" %")}
-      ${exRow("Steepness S",a=>a.S.toFixed(3))}
-      <tr><th>Result</th><td>${pill(A.band)}</td><td>${pill(B.band)}</td></tr>
-    </table>
-    <p>The across-channel waves are actually <b>smaller</b> (0.35 m vs 0.50 m) — yet the map flags them as
-    far worse. Being shorter and slower, they need much less current to block, and the modest extra ebb
-    pushes them from ${A.pct}% to ${B.pct}% of that limit. That is the whole point of the layer: the
-    hazard is not the wave size, it is <b>how steep the wind and current together make it</b>, and it can
-    swing from ${RING_WORD[Math.max(1,A.band)]} to ${RING_WORD[B.band]} on shifts a forecast easily contains.</p>
-
-    <h4>5 · Why “protected waters only”, and what is left out</h4>
-    <p>This models locally-built wind chop. It does <b>not</b> know about Pacific <b>swell</b>, which
-    dominates the outer coast and the west end of Juan de Fuca — so those areas are deliberately excluded,
-    where the estimate would mislead. Also not included: how <i>long</i> the wind has blown (build-up
-    time), waves steepening over <b>shallow reefs and bars</b>, and wind/current model error (~2 km grid).
-    Treat every reading as <b>advisory</b> — not a substitute for official forecasts, tide tables, or your
-    own eyes on the water.</p>
-
-    <div class="callout">
-      <h4>Help check it — paddlers wanted</h4>
-      <p style="margin:.3em 0">These are predictions that have <b>not</b> been ground-truthed. If you
-      paddle a spot on the map, comparing what it showed to what you found is genuinely useful. Text to
-      share on a kayaking forum (edit the link and contact first):</p>
-      <textarea id="forumText" readonly></textarea>
-      <button id="copyForum">Copy summary</button>
-    </div>
-
-    <p style="margin-top:14px;opacity:.7;font-size:12px">Data: NOAA/NOS <b>SSCOFS</b> Salish Sea currents ·
-    Environment &amp; Climate Change Canada <b>HRDPS 2.5 km</b> wind · base maps © Esri / USGS.
-    Model heuristic by the author; no warranty — do not use for navigation.</p>`;
-  $("forumText").value=FORUM_SUMMARY;
-  $("copyForum").onclick=()=>{ const ta=$("forumText"); ta.select();
-    navigator.clipboard?.writeText(ta.value).then(()=>{ $("copyForum").textContent="Copied ✓";
-      setTimeout(()=>$("copyForum").textContent="Copy summary",1500); }); };
-}
 function buildBaseSelect(){
   const md=MODES[mode], sel=$("base");
   // wind & steepness lead with the plain coastline (md.base==="gray"); currents lead with USGS topo.
@@ -1577,7 +1375,6 @@ function updateSteepControls(){
   $("steepStyleFld").style.display = mode==="steep" ? "" : "none";
   $("windArrowsFld").style.display = (mode==="steep"&&steepStyle==="rings") ? "" : "none";
   $("courseFld").style.display = (mode==="steep"&&steepStyle==="course") ? "" : "none";
-  $("about").style.display = STEEP_ON ? "" : "none";      // physics panel rides with the experimental layer
   $("steepStyle").value=steepStyle;
   $("course").value = String(snap16(course));
 }
@@ -1692,15 +1489,16 @@ if(!STEEP_ON){ const o=$("mode").querySelector('option[value="steep"]'); o.disab
   const a=parseFloat(q.get("a"));                  // applies to the URL's mode+display (see updateURL)
   if(isFinite(a)) setActiveAlpha(a); }
 updateSteepControls();
+// Phone: the Base map + Arrows controls are hidden (media block) — pin their values instead:
+// Esri terrain for every layer, densest arrow spacing (David's picks, 2026-07-22).
+if(matchMedia("(max-width:640px)").matches){ basePref.current=basePref.wind=basePref.steep="topo"; $("arrows").value="12"; }
 syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value); $("note").innerHTML=NOTES[mode];
-buildAbout();
 
 /* ---------- phone layout DOM (pairs with the @media (max-width:640px) block) ----------
    The CSS owns all sizing; only the two moves CSS can't express are done here: the header
-   description goes into the About panel (one-line header) and the legend becomes a collapsible
-   overlay INSIDE #map with a ≥44px "Key" toggle. Both are reversed if the viewport crosses back
-   over the breakpoint, so the desktop DOM is untouched at ≥641px. Runs after buildAbout() — that
-   sets aboutBody.innerHTML and would wipe the moved description. */
+   description is hidden (one-line header) and the legend becomes a collapsible overlay
+   INSIDE #map with a ≥44px "Key" toggle. Both are reversed if the viewport crosses back
+   over the breakpoint, so the desktop DOM is untouched at ≥641px. */
 const mobileMQ=matchMedia("(max-width:640px)");
 const legendBtn=document.createElement("button");
 legendBtn.id="legendBtn"; legendBtn.textContent="Key";
@@ -1708,12 +1506,12 @@ legendBtn.onclick=()=>{ const open=$("legend").classList.toggle("open"); legendB
 // the overlay lives inside the map container: keep its taps/scrolls from panning the map under it
 L.DomEvent.disableClickPropagation(legendBtn);
 L.DomEvent.disableClickPropagation($("legend")); L.DomEvent.disableScrollPropagation($("legend"));
-const headerDesc=document.querySelector("header p");   // captured once — it moves between homes
+const headerDesc=document.querySelector("header p");
 let mobileApplied=null;                                 // guard: only touch the DOM on a real crossing
 window.mobileLayout=function(){
   const on=mobileMQ.matches; if(on===mobileApplied) return; mobileApplied=on;
-  if(on){ $("aboutBody").prepend(headerDesc); $("map").append($("legend"),legendBtn); }
-  else { document.querySelector("header").append(headerDesc); $("map").before($("legend")); legendBtn.remove(); }
+  if(on){ headerDesc.style.display="none"; $("map").append($("legend"),legendBtn); }
+  else { headerDesc.style.display=""; $("map").before($("legend")); legendBtn.remove(); }
   map.invalidateSize({animate:false});
 };
 mobileLayout();

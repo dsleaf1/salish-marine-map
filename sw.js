@@ -17,7 +17,7 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v1";
+const CACHE_VERSION = "salishmap-shell-v2";   // 2026-07-22a: phone layout trim + About panel removed
 
 const SHELL = [
   "./",
@@ -38,9 +38,14 @@ self.addEventListener("install", (event) => {
   // two trees don't hold identical files (cape has unified_map.html but no
   // index.html route; deployed salish has index.html but no unified_map.html).
   // cache.addAll would fail the whole install on the first 404.
+  // cache:"no-cache" forces revalidation past the browser's HTTP cache — without it a
+  // shell bump can permanently capture a stale HTTP-cached copy into the new
+  // versioned cache (seen live 2026-07-22 against python http.server's heuristic
+  // freshness; GitHub Pages' max-age=600 has the same 10-minute window).
   event.waitUntil(
     caches.open(CACHE_VERSION)
-      .then((cache) => Promise.allSettled(SHELL.map((u) => cache.add(u))))
+      .then((cache) => Promise.allSettled(
+        SHELL.map((u) => cache.add(new Request(u, { cache: "no-cache" })))))
       .then(() => self.skipWaiting())
   );
 });
