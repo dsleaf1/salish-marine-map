@@ -142,7 +142,7 @@
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22e (phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22f (Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -167,7 +167,7 @@
            snaps to a neighbouring step and jumps on the first drag -->
       <div class="oprow">
         <button id="opDown" type="button" title="Less fill opacity" aria-label="Less fill opacity">−</button>
-        <input type="range" id="opacity" min="0.2" max="1" step="0.01" title="Opacity of the coloured fill; the legend swatches follow it">
+        <input type="range" id="opacity" min="0" max="1" step="0.01" title="Opacity of the coloured fill; the legend swatches follow it">
         <button id="opUp" type="button" title="More fill opacity" aria-label="More fill opacity">+</button>
       </div></div>
     <div class="timewrap"><label for="time" id="timeCap">Forecast timeline</label>
@@ -1420,7 +1420,7 @@ function syncOpacityUI(){
   const a=getAlpha();
   $("opacity").value=a; $("opacityVal").textContent=Math.round(a*100)+"%";
 }
-const clampAlpha=a=>Math.min(1,Math.max(0.2,a));
+const clampAlpha=a=>Math.min(1,Math.max(0,a));   // 0 = fill fully off (arrows/mesh only)
 function setAlpha(a){
   setActiveAlpha(a);                        // steep+rings: adjusts the wind-fill opacity behind the rings
   syncOpacityUI(); applyModeGL(); buildLegend(); render(); updateURL();

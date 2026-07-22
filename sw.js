@@ -17,7 +17,7 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v6";   // 2026-07-22e: no Region selector on phone + double-tap-zoom guard
+const CACHE_VERSION = "salishmap-shell-v7";   // 2026-07-22f: Fill opacity range 0-100%
 
 const SHELL = [
   "./",
