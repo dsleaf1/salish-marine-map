@@ -17,7 +17,7 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v11";   // 2026-07-22j: course-steer compass arrow beside the Course select
+const CACHE_VERSION = "salishmap-shell-v12";   // 2026-07-22k: phone UI batch (wind key, course default, header, legend links) + doubled-labels fix
 
 const SHELL = [
   "./",
