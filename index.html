@@ -30,6 +30,7 @@
   #opacity{width:130px;margin:9px 0} #opacityVal{color:var(--ink);font-weight:700}
   .timewrap{display:flex;flex-direction:column;gap:4px;flex:1 1 320px;min-width:260px}
   .timewrap .row{display:flex;align-items:center;gap:8px} #time{flex:1} #timeLabel{font-weight:700;font-size:13px;min-width:150px}
+  #stepBack,#stepFwd{display:none}   /* hour-step buttons are the phone's timeline control; desktop keeps ▶ play */
   #map{height:640px;border:1px solid var(--line);border-radius:12px;position:relative}
   /* stacking is owned by the "fields" pane (z 450); within it, DOM order puts arrows over the fill */
   .ovl{position:absolute;top:0;left:0;pointer-events:none}
@@ -86,7 +87,10 @@
     #opacity{width:100%;height:32px;margin:2px 0}
     .timewrap{flex:1 1 100%;min-width:0}
     #time{height:44px}
-    #playBtn{min-width:48px;min-height:44px}
+    /* phone: ▶ play (auto-advance) swaps for ◀ ▶ hour-step buttons — deliberate stepping
+       beats an animation on a small screen, and each tap is a wet-finger 48px target */
+    #playBtn{display:none}
+    #stepBack,#stepFwd{display:inline-block;min-width:48px;min-height:44px}
     #timeLabel{min-width:0;font-size:12px}
     /* wet-finger: fat slider thumbs on a slim custom track (native thumbs are ~12px = too small to
        grab), and a 44px About tap row. #time already reserves a 44px-tall hit area (above). */
@@ -119,7 +123,7 @@
 <body>
 <header>
   <h1>Unified Marine Map — currents · wind · steepness</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22a (phone: bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22b (phone: timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -144,7 +148,7 @@
            snaps to a neighbouring step and jumps on the first drag -->
       <input type="range" id="opacity" min="0.2" max="1" step="0.01" title="Opacity of the coloured fill; the legend swatches follow it"></div>
     <div class="timewrap"><label for="time" id="timeCap">Forecast timeline</label>
-      <div class="row"><button id="playBtn">▶</button><input type="range" id="time" min="0" max="48" value="0"><span id="timeLabel"></span></div>
+      <div class="row"><button id="playBtn">▶</button><button id="stepBack" title="Back one hour">◀</button><button id="stepFwd" title="Forward one hour">▶</button><input type="range" id="time" min="0" max="48" value="0"><span id="timeLabel"></span></div>
     </div>
   </div>
   <div class="legend" id="legend"></div>
@@ -1475,6 +1479,11 @@ $("arrows").onchange=render;
 $("opacity").oninput=e=>setAlpha(+e.target.value);
 $("time").oninput=e=>setHour(+e.target.value);
 $("playBtn").onclick=()=>{ if(anim){clearInterval(anim);anim=null;$("playBtn").textContent="▶";} else {$("playBtn").textContent="⏸";anim=setInterval(()=>setHour(hour>=TIMES.length-1?0:hour+1),400);} };
+// Phone hour-steppers (setHour clamps to [0, TIMES.length-1]); stop any animation first in
+// case the viewport crossed the breakpoint mid-play.
+const stepHour=d=>{ if(anim){clearInterval(anim);anim=null;$("playBtn").textContent="▶";} setHour(hour+d); };
+$("stepBack").onclick=()=>stepHour(-1);
+$("stepFwd").onclick=()=>stepHour(1);
 $("saveBtn").onclick=saveOffline; $("refreshBtn").onclick=refreshNow;
 refreshOfflineUI();
 
