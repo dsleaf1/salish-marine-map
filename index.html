@@ -131,7 +131,7 @@
     /* Base map + Arrows + Region are all fixed on the phone (Esri terrain / densest / navigate by
        pinch-and-pan) — controls hidden, three fewer control rows so the map gets the screen.
        Region was only ever a navigation shortcut: tiles load from the viewport either way. */
-    #baseFld,#arrowsFld,#regionFld,#windArrowsFld{display:none}
+    #baseFld,#arrowsFld,#regionFld,#windArrowsFld,#steepStyleFld{display:none}
     #map{flex:1 1 240px;height:auto;min-height:180px;border-radius:8px}
     .status{flex:0 0 auto;margin:4px 0 0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .offbar{flex:0 0 auto;margin-top:6px}
@@ -156,7 +156,7 @@
 </head>
 <body>
 <header>
-  <h1>Unified Marine Map — currents · wind · steepness</h1>
+  <h1>HRDPS Wind and SSCOFS Current Maps</h1>
   <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22j (Course (steer) select in Roughness → On your course now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
 </header>
 <main>
@@ -215,6 +215,8 @@
 <script src="physics.js"></script>
 <script>
 const R2="https://pub-cb8eb71f75d64a57a0d021318ccd0ae7.r2.dev";
+const SSCOFS_URL="https://nvs.nanoos.org/WaysWaterMoves";
+const HRDPS_URL="https://catalogue.ec.gc.ca/geonetwork/srv/api/records/5b401fa0-6c29-57f0-b3d5-749f301d829d";
 const $=id=>document.getElementById(id);
 // Steepness (wind-against-current risk) is now PUBLIC alongside the currents + wind layers
 // (David approved 2026-07-17). It stays labelled EXPERIMENTAL in the physics panel — the Model
@@ -341,7 +343,9 @@ let mode="current";
 // (each cell shaded by the QUARTERING-sea hazard Q for a paddler steering `course`, via physics.js's
 // quarterHaz — the directional model, separate from the steepness band; cutlines = physics.js qBand,
 // v0.4). Toggled in-mode.
-let steepStyle="rings";
+// Phone: the Steep display menu is hidden (media block, more map room) and "On your course" is the
+// permanent default there — desktop keeps "Rings on wind" and the menu to switch.
+let steepStyle=matchMedia("(max-width:640px)").matches ? "course" : "rings";
 let course=225;                 // paddler heading (course steered), degrees; only used by the "course" display
 // In "rings", GL paints the WIND field (its ramp) and the overlay draws the rings; "fill" paints the
 // band ramp. glMode() picks the ramp; alphaRef() picks which opacity the slider/URL control.
@@ -1373,26 +1377,28 @@ function setStatus(m,err){ const e=$("status"); e.textContent=m; e.className="st
 
 // Beaufort colour chips at a given fill alpha. withNames = full (wind mode); compact = key only (rings).
 function beaufortKey(alpha,withNames){
+  const phone=matchMedia("(max-width:640px)").matches;   // phone: drop the Beaufort names, save width
   let s="";
   for(let f=0;f<=9;f++){
     const ktl = f===0 ? "calm" : `${kt(W_EDGES[f-1])}${f<W_EDGES.length?"–"+kt(W_EDGES[f]-1):"+"} kt`;
-    const name = withNames ? " "+W_NAMES[f] : "";
-    s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[f],GRAY_LAND,alpha)}"></i>F${f}${name} · ${ktl}</span>`;
+    const name = (withNames&&!phone) ? " "+W_NAMES[f] : "";
+    const sep = phone ? " " : " · ";
+    s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[f],GRAY_LAND,alpha)}"></i>F${f}${name}${sep}${ktl}</span>`;
   }
-  s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[10],GRAY_LAND,alpha)}"></i>F10+${withNames?" Storm":""}</span>`;
+  s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[10],GRAY_LAND,alpha)}"></i>F10+${(withNames&&!phone)?" Storm":""}</span>`;
   return s;
 }
 function buildLegend(){
   const md=MODES[mode]; let s;
   if(mode==="current"){
-    s='<span class="lchip" style="font-weight:600">Current speed (kt):</span>';
+    s=`<span class="lchip" style="font-weight:600"><a href="${SSCOFS_URL}" target="_blank" rel="noopener" style="color:inherit">Current speed (kt)</a>:</span>`;
     for(let f=0;f<CUR_COL.length;f++){
       // Swatch = the colour as it actually appears on the water (blended at the fill alpha).
       const sw = f===0 ? BASE_WATER : blend(CUR_COL[f],BASE_WATER,md.alpha);
       const lbl = f===0 ? CUR_LBL[f]+" <span style='opacity:.6'>(unshaded)</span>" : CUR_LBL[f];
       s+=`<span class="lchip"><i class="lsw" style="background:${sw}"></i>${lbl}</span>`; }
   } else if(mode==="wind"){
-    s='<span class="lchip" style="font-weight:600">Wind (Beaufort):</span>'+beaufortKey(md.alpha,true);
+    s=`<span class="lchip" style="font-weight:600"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(md.alpha,true);
   } else if(steepStyle==="rings"){
     // rings drawn as an open circle (coloured border); fill behind = wind (Beaufort)
     s='<span class="lchip" style="font-weight:600">Roughness rings · fill = wind:</span>';
@@ -1401,7 +1407,7 @@ function buildLegend(){
     s+=`<span class="lchip"><i class="lsw" style="border-radius:50%;background:#00b4d8;border-color:#023047"></i>current set (arrow)</span>`;
     // With wind arrows on, decode the fill's wind-speed colours inline (Beaufort key at the fill alpha)
     if($("windArrows").checked)
-      s+=`<span class="lchip" style="font-weight:600;margin-left:6px">Wind (Beaufort):</span>`+beaufortKey(getAlpha(),false);
+      s+=`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(getAlpha(),false);
     else
       s+=`<span class="lchip" style="opacity:.6">coloured fill = wind (Beaufort — see Wind layer)</span>`;
   } else if(steepStyle==="course"){
@@ -1596,7 +1602,15 @@ if(!STEEP_ON){ const o=$("mode").querySelector('option[value="steep"]'); o.disab
 updateSteepControls();
 // Phone: the Base map + Arrows controls are hidden (media block) — pin their values instead:
 // Esri terrain for every layer, densest arrow spacing (David's picks, 2026-07-22).
-if(matchMedia("(max-width:640px)").matches){ basePref.current=basePref.wind=basePref.steep="topo"; $("arrows").value="12"; }
+if(matchMedia("(max-width:640px)").matches){
+  basePref.current=basePref.wind=basePref.steep="topo"; $("arrows").value="12";
+  // Phone: shorter Layer option text (Steep display menu is hidden — the compact "beta" note
+  // stands in for it). Desktop keeps the fuller labels.
+  const modeSel=$("mode");
+  modeSel.querySelector('option[value="current"]').textContent="Currents";
+  modeSel.querySelector('option[value="wind"]').textContent="Wind";
+  modeSel.querySelector('option[value="steep"]').textContent="Roughness (beta)";
+}
 rememberTp(); syncArrowsTgl();
 syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value); $("note").innerHTML=NOTES[mode];
 
