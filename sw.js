@@ -17,7 +17,7 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v13";   // 2026-07-22k: Roughness "why not analyzed" popup on out-of-zone (swell-exposed) water
+const CACHE_VERSION = "salishmap-shell-v14";   // 2026-07-22l: Wind Key legend condensed (Beaufort force + range only)
 
 const SHELL = [
   "./",
