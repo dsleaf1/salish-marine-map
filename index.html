@@ -157,7 +157,7 @@
 <body>
 <header>
   <h1>HRDPS Wind and SSCOFS Current Maps</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22j (Course (steer) select in Roughness → On your course now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22k (Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → On your course now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -761,6 +761,15 @@ function doHover(){
         +row("Wind-sea", t.Hs[m]>0.05?`${t.Hs[m].toFixed(1)} m @ ${t.Tp[m].toFixed(1)} s`:"negligible")
         +row("Fetch", `${t.fUse[m]>=60?"≥60":t.fUse[m].toFixed(0)} km upwind`);
       }
+    } else if(!inSteepZone(lon,lat) && overview && overview.ready && nearestCell(overview,lat,lon,SNAP_DEG)>=0){
+      // Out-of-zone water: the steepness heuristic is a wind-vs-current estimate that does NOT model
+      // ocean swell, so it's only computed inside the sheltered STEEP_ZONES. A tap on exposed water
+      // outside them used to show NOTHING — reading as "safe" next to the purple hazard. The overview
+      // (SSCOFS, water-only) proximity test gates on water so land taps still stay silent. Explain why.
+      html=`<b>Roughness not analyzed here</b>`
+        +`<div class="hz" style="color:#f4a52a">Open, swell-exposed water</div>`
+        +`<div>The roughness layer is a wind-vs-current estimate — it doesn't model ocean swell, so it only covers protected, fetch-limited waters.</div>`
+        +`<div style="margin-top:4px"><span class="k">Blank isn't calm:</span> treat exposed water as potentially rougher, not safe.</div>`;
     }
   } else if(mode==="wind" && windTile&&windTile.ready){
     decodeTile(windTile); const t=windTile, m=nearestCell(t,lat,lon,SNAP_DEG);
