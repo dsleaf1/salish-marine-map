@@ -157,7 +157,7 @@
 <body>
 <header>
   <h1>HRDPS Wind and SSCOFS Current Maps</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-22l (Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → On your course now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-23a (Currents: zoomed in past z10, the whole-coast overview now draws <i>alongside</i> the native mesh instead of being switched off by it — a mesh region whose bbox merely clips the corner of your view no longer blanks the modelled water everywhere else on screen (WCVI, Clayoquot to Barkley, was losing a full screen of currents to an 800 m pan), and the tap readout comes back with it; 2026-07-22l: Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → On your course now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -428,6 +428,7 @@ void main(){ if(vSpeed<uMinDraw) discard; int bin=0; for(int i=0;i<12;i++){ if(v
 let gl=null, prog=null, loc={};
 const tiles={};        // mesh region key -> tile (currents, zoomed in)
 let overview=null;     // SSCOFS whole-coast current overview
+let ovClip=null, ovClipSig="";   // the same overview, DRY-masked under the loaded mesh (syncClipOverview)
 let windTile=null;     // HRDPS whole-extent wind overview
 function initGL(){
   // premultipliedAlpha MUST stay true (default): SRC_ALPHA blending onto a transparent clear
@@ -500,6 +501,40 @@ function buildFieldQuads(t,cols,rows,lut){
 // Which tiles draw right now. Currents: native mesh zoomed in, whole-coast overview zoomed out
 // (and while a mesh tile is still downloading). Wind: one whole-extent tile at every zoom.
 const isect=(b,x)=>b.getWest()<x[2]&&b.getEast()>x[0]&&b.getSouth()<x[3]&&b.getNorth()>x[1];
+/* Clip and include. A mesh region's bbox can clip the viewport while its water is entirely
+   off-screen — juan-de-fuca reaches up to lon -125.3, northern-georgia-strait down to -125.4 and
+   49.0N, so a viewport off Clayoquot "intersects" northern-georgia-strait in a corner of dry
+   Vancouver Island. This used to hand the whole screen to that mesh tile and drop the overview
+   outright, blanking real modelled water (measured: an 800 m pan at Clayoquot took the map from
+   arrows everywhere to zero painted pixels, and the tap readout went silent with it).
+   So draw BOTH: a second overview tile whose cells are DRY wherever a *loaded* mesh region owns
+   them. Two properties make it exact. (1) Masking on the ready set, not on all six bboxes, means a
+   region still downloading keeps its overview cover until its mesh lands — no hole, no double
+   paint. (2) A masked cell can only be on screen if its owner's bbox clips the viewport, and then
+   that tile is in `ready` and drawn — so the mask can never open a gap. Rebuilt only when the
+   ready set changes (at most once per region per session): geometry, lut and velocity bytes are
+   shared with the overview, so this is one pass over the water cells and a re-decode. */
+function syncClipOverview(){
+  if(!overview||!overview.ready){ ovClip=null; ovClipSig=""; return null; }
+  const boxes=REGIONS.filter(r=>r[4]&&tiles[r[3]]&&tiles[r[3]].ready).map(r=>r[4]);
+  const sig=boxes.map(x=>x.join(",")).join(";");
+  if(ovClip&&ovClip.src===overview&&ovClipSig===sig) return ovClip;
+  ovClipSig=sig;
+  if(!boxes.length){ ovClip=null; return null; }
+  const o=overview, ne=o.ne;
+  // Share the static geometry (posBuf/ref/grid) and the velocity bytes; only the mask, the decoded
+  // arrays and the GL speed buffer are this tile's own.
+  const t=(ovClip&&ovClip.ne===ne&&ovClip.src===o)?ovClip:{
+    key:"overview",src:o,bbox:o.bbox,vpe:6,ready:true,ne,span:o.span,spdScale:o.spdScale,
+    lut:o.lut,cx:o.cx,cy:o.cy,ref:o.ref,posBuf:o.posBuf,gcols:o.gcols,grows:o.grows,glut:o.glut,
+    spd:new Float32Array(ne),dir:new Float32Array(ne),spd3:new Float32Array(ne*6),
+    own:new Uint8Array(ne),spdBuf:gl.createBuffer()};
+  t.vel=o.vel; t.hourOf=o.hourOf; t.man=o.man;   // follow the overview across a run change
+  for(let i=0;i<ne;i++){ const lo=o.cx[i], la=o.cy[i];
+    t.own[i]=boxes.some(x=>lo>=x[0]&&lo<=x[2]&&la>=x[1]&&la<=x[3])?0:1; }
+  t.decodedHour=-1;                              // force a re-decode through the new mask
+  ovClip=t; return t;
+}
 function activeTiles(){
   // steep "rings" paints the wind field (rings drawn separately in drawSteepRings); "fill" paints bands
   if(mode==="steep") return steepStyle==="rings"
@@ -509,7 +544,8 @@ function activeTiles(){
   if(map.getZoom()>=MESH_ZOOM){
     const b=map.getBounds();
     const ready=REGIONS.filter(r=>isect(b,r[4])).map(r=>tiles[r[3]]).filter(t=>t&&t.ready);
-    if(ready.length) return ready;
+    // Additive, not all-or-nothing: the clipped overview covers every pixel the mesh doesn't own.
+    if(ready.length){ const oc=syncClipOverview(); return oc?[oc,...ready]:ready; }
   }
   return overview&&overview.ready?[overview]:[];
 }

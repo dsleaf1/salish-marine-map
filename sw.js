@@ -17,7 +17,7 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v14";   // 2026-07-22l: Wind Key legend condensed (Beaufort force + range only)
+const CACHE_VERSION = "salishmap-shell-v15";   // 2026-07-23a: clip-and-include — overview draws alongside the mesh at z>=10
 
 const SHELL = [
   "./",
