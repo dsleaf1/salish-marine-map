@@ -14,7 +14,11 @@
      cache same-origin assets, and a CDN copy would leave the whole app dead in airplane mode. -->
 <link rel="stylesheet" href="vendor/leaflet.css"/>
 <style>
-  :root{ --ink:#1b2430; --muted:#667085; --bg:#f5f7fa; --line:#e3e8ef; }
+  :root{ --ink:#1b2430; --muted:#667085; --bg:#f5f7fa; --line:#e3e8ef;
+         /* Contrast lift for the BASE tiles only, so the coastline punches through the translucent
+            wind/current fill (David's Broughtons field report). Tunable — the ONE knob to adjust.
+            Set to `none` to disable. Applies to whichever base is active. */
+         --base-filter: contrast(1.55) brightness(0.9) saturate(1.28); }   /* "high" — David's pick 2026-08-02 */
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink);line-height:1.45}
   header{background:#0a3d62;color:#fff;padding:16px 22px}
@@ -46,6 +50,9 @@
   #map{height:640px;border:1px solid var(--line);border-radius:12px;position:relative}
   /* stacking is owned by the "fields" pane (z 450); within it, DOM order puts arrows over the fill */
   .ovl{position:absolute;top:0;left:0;pointer-events:none}
+  /* base-tile contrast lift — scoped to the base layer's own container (className:"baseTiles" in
+     setBase), so it never touches the "labels" pane or the field/arrow canvases in "fields" */
+  .leaflet-layer.baseTiles{filter:var(--base-filter);}
   .legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center}
   .lchip{display:flex;align-items:center;gap:6px;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;background:#fff}
   .lsw{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.15)}
@@ -313,6 +320,10 @@ const BASES={
   topo:{name:"Esri terrain",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri",ownLabels:true},
   imagery:{name:"Satellite",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri",ownLabels:false},
   gray:{name:"Plain coastline",url:"https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri",ownLabels:false},
+  // Esri World Ocean Base: nautical shaded relief + bathymetry with a crisp, high-contrast shoreline —
+  // reads through the translucent wind fill far better than the gray canvas or Esri terrain (David's
+  // Broughtons field report, 2026-08-02). Cached only to z13, so upscale z14-16 rather than 404 (blank).
+  ocean:{name:"Ocean (marine)",url:"https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri — Ocean",ownLabels:false,maxNativeZoom:13},
 };
 const LABELS_URL="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
 
@@ -325,12 +336,12 @@ const MODES={
             // <1 kt is left unshaded so the terrain base reads through (and DRY discards)
             minDraw:1.0, unit:"kt", base:"usgs", labels:false, arrowFlip:0, arrowMin:0.2,
             legendOver:BASE_WATER, mesh:true },
-  // alpha defaults to 0.72 (the Fill opacity slider overrides it): the Esri reference layer carries
-  // place names but NOT the shoreline, so the fill must stay sheer enough for the gray canvas's land
-  // to read through. Above ~0.8 the coast vanishes under the fill.
+  // alpha defaults to 0.72 (the Fill opacity slider overrides it). Default base is Esri terrain (topo,
+  // David's pick 2026-08-02): its own coastline + labels, lifted by the base contrast filter (--base-filter,
+  // baked to "high") so the shore reads through the fill. topo bakes labels, so no reference-labels overlay.
   wind:{    label:"Wind", edges:W_EDGES, cols:W_COL, alpha:0.72,
             // paint every valid cell incl. F0 calm (matches hrdps_map.html); only DRY discards
-            minDraw:-1.0, unit:"km/h", base:"gray", labels:true, arrowFlip:180, arrowMin:1.0,
+            minDraw:-1.0, unit:"km/h", base:"topo", labels:true, arrowFlip:180, arrowMin:1.0,
             legendOver:GRAY_LAND, mesh:false },
   // Derived hazard layer. The GL "speed" fed per cell is the BAND (2/3/4); edges map band→colour and
   // minDraw=1.5 discards bands ≤1, giving threshold-only shading. Arrows (if on) show current SET, so
@@ -395,7 +406,10 @@ for(const [p,z] of [["fields",450],["labels",460]]){
 let baseLayer=null, labelLayer=null;
 function setBase(key){
   if(baseLayer) map.removeLayer(baseLayer);
-  const b=BASES[key]; baseLayer=L.tileLayer(b.url,{maxZoom:16,attribution:b.attr}).addTo(map);
+  // className "baseTiles" scopes the contrast filter (--base-filter) to THIS layer's container only —
+  // labels sit in the "labels" pane and the field/arrow canvases in "fields", so neither is touched.
+  // maxNativeZoom (ocean) lets Leaflet upscale the last cached level instead of drawing blank tiles.
+  const b=BASES[key]; baseLayer=L.tileLayer(b.url,{maxZoom:16,maxNativeZoom:b.maxNativeZoom,attribution:b.attr,className:"baseTiles"}).addTo(map);
   // add the reference-labels overlay only when the mode wants labels AND the base has none of its own,
   // otherwise topo/USGS bases (which bake in their own labels) would show a doubled set of city names.
   const want=MODES[mode].labels && !b.ownLabels;
@@ -1477,11 +1491,14 @@ const NOTES={
 };
 function buildBaseSelect(){
   const md=MODES[mode], sel=$("base");
-  // wind & steepness lead with the plain coastline (md.base==="gray"); currents lead with USGS topo.
-  const order = md.base==="gray" ? ["gray","topo","imagery"] : ["usgs","topo","imagery"];
+  // currents lead with USGS topo; wind & steepness lead with Esri terrain (the wind default), then the
+  // marine Ocean base and the plain gray canvas as alternatives.
+  let order = (mode==="current") ? ["usgs","ocean","topo","imagery"] : ["topo","ocean","gray","imagery"];
+  const cur = basePref[mode]||md.base;
+  if(!order.includes(cur)) order=[cur,...order];   // an explicit ?base= (or pinned) choice is always selectable
   sel.innerHTML="";
   for(const k of order){ const o=document.createElement("option"); o.value=k; o.textContent=BASES[k].name;
-    if(k===(basePref[mode]||md.base)) o.selected=true; sel.appendChild(o); }
+    if(k===cur) o.selected=true; sel.appendChild(o); }
 }
 const basePref={};                        // remember the user's base choice per mode
 /* Fill opacity. MODES[mode].alpha is the ONE source of truth: applyModeGL() pushes it to the shader
@@ -1573,6 +1590,8 @@ function updateURL(){
     // `a` is the ACTIVE mode's fill opacity: each mode keeps its own, and a link only ever restores
     // the one it was shared in. The other modes fall back to their defaults.
     const p={mode,lat:c.lat.toFixed(4),lon:c.lng.toFixed(4),z:map.getZoom(),h:hour,a:getAlpha().toFixed(2)};
+    // carry the base only when it isn't the mode's default, so existing default links stay unchanged
+    const bcur=basePref[mode]||MODES[mode].base; if(bcur!==MODES[mode].base) p.base=bcur;
     if(mode==="steep"){ p.st=steepStyle;        // remember the display so a shared steep link restores it
       if(steepStyle==="course") p.course=Math.round(course); }  // ...and the heading, for a course link
     history.replaceState(null,"","?"+new URLSearchParams(p));
@@ -1604,7 +1623,7 @@ $("mode").onchange=e=>setMode(e.target.value);
 $("steepStyle").onchange=e=>setSteepStyle(e.target.value);
 $("course").onchange=e=>setCourse(+e.target.value);
 $("windArrows").onchange=()=>{ buildLegend(); render(); };   // legend gains the Beaufort key when on
-$("base").onchange=e=>{ basePref[mode]=e.target.value; setBase(e.target.value); };
+$("base").onchange=e=>{ basePref[mode]=e.target.value; setBase(e.target.value); updateURL(); };
 $("arrows").onchange=()=>{ rememberTp(); syncArrowsTgl(); render(); };
 $("opacity").oninput=e=>setAlpha(+e.target.value);
 /* phone ± buttons: 5-point nudges, clamped to the same 0–1 range as the slider. toFixed(2) keeps
@@ -1657,6 +1676,11 @@ if(matchMedia("(max-width:640px)").matches){
   modeSel.querySelector('option[value="wind"]').textContent="Wind";
   modeSel.querySelector('option[value="steep"]').textContent="Roughness (beta)";
 }
+// ?base= overrides the default/pinned base for the URL's mode. Read AFTER the phone pin so it wins on
+// phone too, where the Base dropdown is hidden — lets a phone compare bases by swapping the URL (David's
+// Broughtons contrast test). Unknown keys ignored (fall back to the pinned/default base).
+{ const bkey=new URLSearchParams(location.search).get("base");
+  if(bkey && BASES[bkey]) basePref[mode]=bkey; }
 rememberTp(); syncArrowsTgl();
 syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value); $("note").innerHTML=NOTES[mode];
 

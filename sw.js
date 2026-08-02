@@ -17,7 +17,7 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v15";   // 2026-07-23a: clip-and-include — overview draws alongside the mesh at z>=10
+const CACHE_VERSION = "salishmap-shell-v16";   // 2026-08-02a: base legibility — Esri terrain wind default + high base-contrast filter + Ocean base option + ?base=
 
 const SHELL = [
   "./",
