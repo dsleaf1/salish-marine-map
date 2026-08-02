@@ -11,6 +11,17 @@
 <!-- Leaflet 1.9.4 vendored (SRI-verified against unpkg): the offline shell (sw.js) can only
      cache same-origin assets, and a CDN copy would leave the whole app dead in airplane mode. -->
 <link rel="stylesheet" href="../vendor/leaflet.css"/>
+<script>
+/* PREVIEW-only knob: ?filter= lets you feel out the base contrast filter on the phone, no CSS editing.
+   off/none · low · med (the baked default) · high — or pass a raw CSS filter string (anything with "("). */
+(function(){var f=new URLSearchParams(location.search).get('filter'); if(!f) return;
+  var P={off:'none',none:'none',
+    low:'contrast(1.15) brightness(0.97) saturate(1.08)',
+    med:'contrast(1.3) brightness(0.94) saturate(1.15)',
+    high:'contrast(1.55) brightness(0.9) saturate(1.28)'};
+  var v=P[f.toLowerCase()] || (f.indexOf('(')>=0 ? f : null);
+  if(v) document.documentElement.style.setProperty('--base-filter', v);})();
+</script>
 <style>
   :root{ --ink:#1b2430; --muted:#667085; --bg:#f5f7fa; --line:#e3e8ef;
          /* Contrast lift for the BASE tiles only, so the coastline punches through the translucent
