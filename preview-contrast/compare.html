@@ -1,0 +1,1774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a3d62">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Salish Map">
+<title>Unified Marine Map — currents · wind · steepness (WebGL)</title>
+<!-- Leaflet 1.9.4 vendored (SRI-verified against unpkg): the offline shell (sw.js) can only
+     cache same-origin assets, and a CDN copy would leave the whole app dead in airplane mode. -->
+<link rel="stylesheet" href="../vendor/leaflet.css"/>
+<style>
+  :root{ --ink:#1b2430; --muted:#667085; --bg:#f5f7fa; --line:#e3e8ef;
+         /* Contrast lift for the BASE tiles only, so the coastline punches through the translucent
+            wind/current fill (David's Broughtons field report). Tunable — the ONE knob to adjust.
+            Set to `none` to disable. Applies to whichever base is active. */
+         --base-filter: contrast(1.3) brightness(0.94) saturate(1.15); }
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink);line-height:1.45}
+  header{background:#0a3d62;color:#fff;padding:16px 22px}
+  header h1{margin:0;font-size:20px} header p{margin:4px 0 0;font-size:13px;opacity:.92}
+  main{max-width:1060px;margin:0 auto;padding:18px}
+  .bar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+  .fld{display:flex;flex-direction:column;gap:3px}
+  .fld label{font-size:12px;color:var(--muted);font-weight:600}
+  /* Course-steer arrow: rotated by JS (transform:rotate(<course>deg)) to point in the compass
+     direction of the selected heading, right next to the select showing its text/degrees. */
+  .courseRow{display:flex;align-items:center;gap:8px}
+  .courseRow select{flex:1 1 auto}
+  .courseArrow{flex:0 0 auto;transform-origin:50% 50%;transition:transform .15s linear}
+  select{font:inherit;border:1px solid #d7dde6;border-radius:8px;padding:9px 10px}
+  select option:disabled{color:#aab2bd}
+  button{font:inherit;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer}
+  #mode{font-weight:600}
+  #opacity{width:130px;margin:9px 0} #opacityVal{color:var(--ink);font-weight:700}
+  /* the ± nudge buttons flanking the opacity slider are phone-only (see the media block) */
+  .oprow{display:flex;align-items:center;gap:6px} #opDown,#opUp,#arrowsTgl{display:none}
+  /* iOS read a quick second tap on a control (the opacity ±, mostly) as double-tap-to-zoom. That
+     page-zooms the fixed 100dvh phone layout, and because every pinch inside #map is captured by
+     Leaflet there is then no way to pinch back out — the map looks frozen. `manipulation` drops
+     double-tap zoom (and the 300 ms tap delay) while leaving real pinch-zoom alone. */
+  header,.bar,.offbar,button,select,label{touch-action:manipulation}
+  .timewrap{display:flex;flex-direction:column;gap:4px;flex:1 1 320px;min-width:260px}
+  .timewrap .row{display:flex;align-items:center;gap:8px} #time{flex:1} #timeLabel{font-weight:700;font-size:13px;min-width:150px}
+  #stepBack,#stepFwd{display:none}   /* hour-step buttons are the phone's timeline control; desktop keeps ▶ play */
+  #map{height:640px;border:1px solid var(--line);border-radius:12px;position:relative}
+  /* stacking is owned by the "fields" pane (z 450); within it, DOM order puts arrows over the fill */
+  .ovl{position:absolute;top:0;left:0;pointer-events:none}
+  /* base-tile contrast lift — scoped to the base layer's own container (className:"baseTiles" in
+     setBase), so it never touches the "labels" pane or the field/arrow canvases in "fields" */
+  .leaflet-layer.baseTiles{filter:var(--base-filter);}
+  .legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center}
+  .lchip{display:flex;align-items:center;gap:6px;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;background:#fff}
+  .lsw{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.15)}
+  .status{font-size:13px;color:var(--muted);margin-top:10px} .status.err{color:#b54708}
+  .note{font-size:12px;color:var(--muted);margin-top:10px}
+  .chk{flex-direction:row;align-items:center;gap:6px;padding-bottom:9px}
+  .chk input{width:16px;height:16px} .chk label{color:var(--ink)}
+  /* hover readout */
+  #tip{position:fixed;z-index:9999;pointer-events:none;display:none;max-width:250px;
+       background:rgba(17,24,32,.94);color:#fff;font-size:12px;line-height:1.5;
+       padding:8px 10px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+  #tip b{color:#fff} #tip .k{color:#9fb3c8} #tip .hz{font-weight:700}
+  /* Touch (pinMode): the readout pins to the bottom of the viewport instead of following the finger,
+     so a thumb never covers the numbers. A ✕ — and tapping empty map — dismisses it. The desktop
+     following-tip keeps position:fixed + inline left/top (pointer-events:none so it never blocks a
+     hover). Class toggled in doHover(); the ✕ + body live as persistent children of #tip. */
+  #tip.pinned{position:static;left:auto;top:auto;max-width:none;pointer-events:auto;
+       position:fixed;left:8px;right:8px;bottom:8px;max-height:62vh;overflow-y:auto;padding-top:12px}
+  #tip .tipClose{display:none}
+  #tip.pinned .tipClose{display:flex;align-items:center;justify-content:center;position:absolute;
+       top:2px;right:2px;width:44px;height:44px;z-index:1;background:rgba(17,24,32,.55);border:none;
+       border-radius:8px;color:#cdd8e4;font-size:18px;line-height:1;cursor:pointer}
+  #tip.pinned .tipBody>*:first-child{padding-right:42px}   /* keep the title clear of the ✕ */
+  /* offline controls + two-clock staleness banner (Unified_Map_Phone_Plan step 4). One compact
+     row under the status line on desktop; the phone media block below grows the buttons to
+     wet-finger size. Chip colours = run-age bands (see updateStale for the thresholds). */
+  .offbar{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-top:8px;font-size:12px}
+  .offbar button{font-size:12px;padding:6px 10px}
+  .offbar .savedlist{color:var(--muted)}
+  #stale{display:none;gap:6px;flex-wrap:wrap;align-items:center}
+  #stale .clk{display:inline-block;padding:2px 9px;border-radius:10px;font-weight:700;color:#fff}
+  #stale .clk.ok{background:#1a7f37} #stale .clk.amber{background:#b45309} #stale .clk.red{background:#b42318}
+  #stale .offnote{color:#b45309;font-weight:600}
+  /* ---------- phone layout (Unified_Map_Phone_Plan step 1; desktop untouched) ----------
+     Body becomes a fixed 100dvh column: one-line header, the control bar kept as-is per David's
+     step-0 decision (compacted, ≥44px targets), then the map takes every remaining pixel with the
+     timeline directly above it; opening About scrolls within <main>. The legend turns into a
+     collapsible overlay on the map (DOM moves live in mobileLayout()). dvh — with a vh fallback —
+     tracks iOS Safari's URL-bar collapse; the visualViewport wiring re-measures the map. */
+  @media (max-width:640px){
+    body{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+    header{padding:7px 12px;flex:0 0 auto}
+    header h1{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;
+         padding:8px;max-width:none;width:100%}
+    .bar{flex:0 0 auto;gap:6px 8px;margin-bottom:6px}
+    .fld{flex:1 1 45%;min-width:0;gap:2px}
+    .fld label{font-size:11px}
+    .fld select{width:100%;min-height:44px;padding:6px 8px}
+    .courseRow select{width:auto}      /* keep room for the course arrow beside it */
+    .courseArrow{width:30px;height:30px}
+    .chk input{width:22px;height:22px}
+    /* ± nudge buttons flank the slider: a 5-point tap beats a wet-finger drag on a 26px thumb.
+       The field takes a whole row (the default .fld 45% basis left the slider ~13px once the
+       ±, the arrows toggle and the Layer select were sharing it). */
+    #opFld{flex:1 1 100%}
+    .oprow{width:100%;gap:8px}
+    #opDown,#opUp{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+         min-width:44px;min-height:44px;padding:0;font-size:20px;font-weight:700;line-height:1}
+    /* arrows on/off lives here because the Arrows density select is hidden on the phone (below);
+       it drives the SAME #arrows select, flipping between Off and the last density used */
+    #arrowsTgl{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;gap:4px;
+         min-width:44px;min-height:44px;padding:0 8px;font-size:13px;font-weight:700;line-height:1}
+    #arrowsTgl[aria-pressed="false"]{color:var(--muted);background:#eef1f5}
+    #opacity{flex:1 1 auto;width:auto;min-width:0;height:32px;margin:2px 0}
+    .timewrap{flex:1 1 100%;min-width:0}
+    #time{height:44px}
+    /* phone: ▶ play (auto-advance) swaps for ◀ ▶ hour-step buttons — deliberate stepping
+       beats an animation on a small screen, and each tap is a wet-finger 48px target */
+    #playBtn{display:none}
+    #stepBack,#stepFwd{display:inline-block;min-width:48px;min-height:44px}
+    #timeLabel{min-width:0;font-size:12px}
+    /* wet-finger: fat slider thumbs on a slim custom track (native thumbs are ~12px = too small to
+       grab), and a 44px About tap row. #time already reserves a 44px-tall hit area (above). */
+    #time,#opacity{-webkit-appearance:none;appearance:none;background:transparent}
+    #time::-webkit-slider-runnable-track,#opacity::-webkit-slider-runnable-track{height:5px;background:#c7d2de;border-radius:3px}
+    #time::-moz-range-track,#opacity::-moz-range-track{height:5px;background:#c7d2de;border-radius:3px}
+    #time::-webkit-slider-thumb,#opacity::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+        width:26px;height:26px;border-radius:50%;background:#0a3d62;border:2px solid #fff;
+        box-shadow:0 1px 3px rgba(0,0,0,.3);margin-top:-11px}
+    #time::-moz-range-thumb,#opacity::-moz-range-thumb{width:26px;height:26px;border-radius:50%;
+        background:#0a3d62;border:2px solid #fff}
+    /* Base map + Arrows + Region are all fixed on the phone (Esri terrain / densest / navigate by
+       pinch-and-pan) — controls hidden, three fewer control rows so the map gets the screen.
+       Region was only ever a navigation shortcut: tiles load from the viewport either way. */
+    #baseFld,#arrowsFld,#regionFld,#windArrowsFld,#steepStyleFld{display:none}
+    #map{flex:1 1 240px;height:auto;min-height:180px;border-radius:8px}
+    .status{flex:0 0 auto;margin:4px 0 0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .offbar{flex:0 0 auto;margin-top:6px}
+    .offbar button{min-height:44px;flex:1 1 40%}
+    .note{display:none}                /* per-mode hint; hidden to give the map the room */
+    /* legend → collapsible overlay; mobileLayout() still moves the node inside #map, but both the
+       panel and its button are position:FIXED so the key opens at the bottom of the PAGE (over the
+       status + offline rows) rather than the bottom of the map — full width, and it clears the
+       thumb-reach zone. The right padding keeps the text out from under the ✕ button. */
+    #map .legend{position:fixed;left:8px;right:8px;bottom:8px;z-index:1100;margin:0;display:none;
+         background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;
+         padding:8px 56px 8px 8px;max-height:50vh;max-height:50dvh;overflow:auto;
+         box-shadow:0 2px 10px rgba(0,0,0,.2)}
+    #map .legend.open{display:flex}
+    /* Key button stays on the map while closed (parking it at the page bottom would sit on top of
+       Refresh); once open it goes fixed too, into the panel's bottom-right corner as the ✕ */
+    #legendBtn{position:absolute;right:8px;bottom:8px;z-index:1101;min-width:44px;min-height:44px;
+         font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+    #legendBtn.open{position:fixed;right:16px;bottom:16px;z-index:1102}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>HRDPS Wind and SSCOFS Current Maps</h1>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-23a (Currents: zoomed in past z10, the whole-coast overview now draws <i>alongside</i> the native mesh instead of being switched off by it — a mesh region whose bbox merely clips the corner of your view no longer blanks the modelled water everywhere else on screen (WCVI, Clayoquot to Barkley, was losing a full screen of currents to an 800 m pan), and the tap readout comes back with it; 2026-07-22l: Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → On your course now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+</header>
+<main>
+  <div class="bar">
+    <div class="fld"><label for="mode">Layer</label>
+      <select id="mode">
+        <option value="current" selected>Currents (SSCOFS)</option>
+        <option value="wind">Wind (HRDPS 2.5 km)</option>
+        <option value="steep">Roughness (wind vs current)</option>
+      </select></div>
+    <div class="fld" id="steepStyleFld" style="display:none"><label for="steepStyle">Steep display</label>
+      <select id="steepStyle"><option value="rings" selected>Rings on wind</option><option value="fill">Shaded cells</option><option value="course">On your course</option></select></div>
+    <div class="fld" id="courseFld" style="display:none"><label for="course">Course (steer)</label>
+      <div class="courseRow">
+        <select id="course" title="Shade each cell by the quartering-sea hazard for a paddler steering this heading"></select>
+        <svg id="courseArrow" class="courseArrow" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+          <path d="M12 2 L12 21 M12 2 L6.5 9 M12 2 L17.5 9" stroke="var(--ink)" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div></div>
+    <div class="fld" id="regionFld"><label for="region">Region</label><select id="region"></select></div>
+    <div class="fld" id="baseFld"><label for="base">Base map</label><select id="base"></select></div>
+    <div class="fld" id="arrowsFld"><label for="arrows">Arrows</label>
+      <select id="arrows"><option value="0">Off</option><option value="26">Normal</option><option value="18" selected>Dense</option><option value="12">Denser</option></select></div>
+    <div class="fld chk" id="windArrowsFld" style="display:none">
+      <input type="checkbox" id="windArrows"><label for="windArrows">Wind arrows</label></div>
+    <div class="fld" id="opFld"><label for="opacity">Fill opacity <span id="opacityVal"></span></label>
+      <!-- step 0.01: both mode defaults (0.72, 0.85) must be exactly representable or the thumb
+           snaps to a neighbouring step and jumps on the first drag -->
+      <div class="oprow">
+        <button id="opDown" type="button" title="Less fill opacity" aria-label="Less fill opacity">−</button>
+        <input type="range" id="opacity" min="0" max="1" step="0.01" title="Opacity of the coloured fill; the legend swatches follow it">
+        <button id="opUp" type="button" title="More fill opacity" aria-label="More fill opacity">+</button>
+        <button id="arrowsTgl" type="button" aria-pressed="true">➤ On</button>
+      </div></div>
+    <div class="timewrap"><label for="time" id="timeCap">Forecast timeline</label>
+      <div class="row"><button id="playBtn">▶</button><button id="stepBack" title="Back one hour">◀</button><button id="stepFwd" title="Forward one hour">▶</button><input type="range" id="time" min="0" max="48" value="0"><span id="timeLabel"></span></div>
+    </div>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div id="map"></div>
+  <p class="status" id="status">Loading…</p>
+  <div class="offbar" id="offbar">
+    <span id="stale"></span>
+    <button id="saveBtn">⬇ Save offline</button>
+    <button id="refreshBtn">↻ Refresh</button>
+    <span class="savedlist" id="savedList"></span>
+  </div>
+  <p class="note" id="note"></p>
+</main>
+<div id="tip"></div>
+<script src="../vendor/leaflet.js"></script>
+<!-- Shared wave/steepness physics (ONE source of truth with force_explorer.html + the Node
+     harnesses — Model_Replay_Plan.md step 2). Classic script: its top-level consts (G, KT, …)
+     land in this page's global scope, so the inline script below uses them directly. The deploy
+     recipe ships it alongside index.html (it is already on the repo branch). -->
+<script src="../physics.js"></script>
+<script>
+const R2="https://pub-cb8eb71f75d64a57a0d021318ccd0ae7.r2.dev";
+const SSCOFS_URL="https://nvs.nanoos.org/WaysWaterMoves";
+const HRDPS_URL="https://catalogue.ec.gc.ca/geonetwork/srv/api/records/5b401fa0-6c29-57f0-b3d5-749f301d829d";
+const $=id=>document.getElementById(id);
+// Steepness (wind-against-current risk) is now PUBLIC alongside the currents + wind layers
+// (David approved 2026-07-17). It stays labelled EXPERIMENTAL in the physics panel — the Model
+// Replay archive-and-replay project is the ongoing check of these model bands against real seas.
+const STEEP_ON = true;
+// [name, center, zoom, key, bbox W,S,E,N] — bboxes MUST match hrdps-ingest/sscofs_mesh.py REGIONS.
+// Order = element ownership priority inside the 0.05° overlaps (earlier region draws, later skips),
+// so translucent neighbours never double-blend into a dark seam.
+const REGIONS=[
+  ["Puget Sound",[47.30,-122.55],11,"puget-sound",[-123.3,47.0,-122.2,48.4]],
+  ["San Juan & Gulf Islands",[48.60,-123.1],10,"san-juan-gulf-islands",[-123.95,48.3,-122.5,49.3]],
+  ["Northern Georgia Strait",[49.6,-124.4],10,"northern-georgia-strait",[-125.4,49.0,-123.4,50.2]],
+  ["Juan de Fuca",[48.35,-124.35],10,"juan-de-fuca",[-125.3,48.0,-123.25,48.75]],
+  ["Broughtons & Discovery",[50.45,-125.9],10,"broughtons-discovery",[-127.6,50.15,-124.3,51.2]],
+  ["Johnstone Str → QCS",[50.95,-127.7],10,"johnstone-qcs-south",[-129.0,50.7,-126.3,52.13]],
+];
+const MESH_ZOOM=10;                         // >= this: native mesh tiles; below: whole-coast overview
+const FULL_EXTENT=[[47.0,-128.8],[51.6,-122.2]];
+const DRY=-1000;                            // sentinel written into the GL speed buffer; always discarded
+
+// ---- Currents: kt bins (byte/10), arrows point the way the water goes (TOWARD) ----
+const CUR_EDGES=[1,2,3,4,5,7,9];
+const CUR_COL=["#3288bd","#66c2a5","#abdda4","#a6d96a","#fee08b","#fdae61","#f46d43","#d53e4f"];
+const CUR_LBL=["0–1","1–2","2–3","3–4","4–5","5–7","7–9","9+"];
+// ---- Wind: Beaufort km/h bins (byte = km/h), arrows point DOWNWIND (byte dir is FROM) ----
+// Edges/colours/names copied verbatim from hrdps_map.html so the two apps read identically.
+const W_EDGES=[1,6,12,20,29,39,50,62,75,89,103,118];
+const W_COL=["#dfeaf2","#bfe3ec","#a6dd9f","#d7e84f","#f3c44d","#f0893b","#e44f2c","#c71d2b","#9a2240","#6b2a5a","#4a2370","#2c1a55","#14102e"];
+const W_NAMES=["Calm","Light air","Light breeze","Gentle","Moderate","Fresh","Strong","Near gale","Gale","Strong gale","Storm","Violent storm","Hurricane"];
+const kt = k => Math.round(k/1.852);
+
+/* ---- Steepness risk: wind-against-current, DERIVED from the wind + current fields ----
+   This is a hazard heuristic, NOT a wave model or a wave-height forecast. At each current-overview
+   water cell we estimate the local wind-sea from the wind speed and the cell's COMPUTED DIRECTIONAL
+   FETCH (upwind open-water distance in the wind's sector — there is no wave field), then apply the
+   wind map's validated wave-action steepening (physics.js) against the local current. It is only shown
+   in PROTECTED waters — see STEEP_ZONES — because fetch-limited growth cannot represent ocean swell,
+   which dominates the open outer coast.
+   Threshold-only: bands 0–1 (negligible / mild) are left UNPAINTED so the map stays quiet; only
+   caution/rough/hazardous shade. Colours escalate amber→orange→magenta (CVD-safe: no green, and not
+   a red/green pair), deliberately unlike the current & wind ramps so the layer can't be mistaken. */
+const STEEP_COL=["#f2b705","#e8590c","#8e1c6b"];        // band 2 medium, 3 high, 4 very high/breaking
+const STEEP_LBL=["Medium — steepening chop","High — steep, short seas","Very high — breaking / near-blocking"];
+const STEEP_SUB=["wind against current builds a short, stacked sea","confused steep water; avoid in a loaded boat","wave blocking: standing, breaking seas"];
+// "Rings on wind" display: a hazard RING (colour+weight by band) with a cyan current dot+arrow, drawn
+// over the full wind fill — the original wind-map station format. Indexed by band 0..4; band 2/3/4
+// reuse STEEP_COL so the two displays share a palette. band ≤0 draws no ring (wind shows through).
+const RING=[null,                                       // 0 negligible → no ring
+  {col:"#5b7186",lw:2.0,a:0.55,r:8.5},                  // 1 low
+  {col:STEEP_COL[0],lw:3.5,a:0.95,r:10},               // 2 medium
+  {col:STEEP_COL[1],lw:4.5,a:0.96,r:11.5},             // 3 high
+  {col:STEEP_COL[2],lw:6.0,a:0.98,r:13}];              // 4 very high / breaking
+const RING_LBL=["","Low — slight steepening","Medium — steepening chop","High — steep, short seas","Very high — breaking / blocking"];
+const RING_WORD=["Very low","Low","Medium","High","Very high"];
+// Directional fetch (David 2026-07-10): each steepness cell gets its own upwind open-water distance
+// per 16 compass sectors, ray-marched on the current-overview water mask at tile build. A NW blow
+// down 60 km of strait and the same wind over a 2 km cove no longer produce the same sea. Capped at
+// 60 km: past that the fully-developed (PM) cap governs growth anyway, and beyond-fetch seas mean
+// swell — which this layer does not model (the zones already exclude swell-exposed coast).
+const FETCH_SECTORS=16, FETCH_CAP_KM=60;
+/* ---- Steepness physics: physics.js (shared module) — the inline model is GONE (2026-07-17) ----
+   Until this build the layer carried a hand-copied, grid-coarsened "v3" copy of the explorer's
+   model (windSea / hazBand / specCore / hazSpecBand, PM r-step 0.1, envelope 0.1, 98.3% band-match
+   to the explorer). That duplicate was the one-physics-source violation the Model Replay dev ref
+   forbids; step 2 of Model_Replay_Plan.md replaced it with the module's own fan via steepCell()
+   (±80°/5° directional components, spectral+saturation blocking at the module's fine grids, fast
+   band-only consequence-gate path — provably band-identical to the explorer's full model). This
+   file now owns only the fetch GEOMETRY (16-sector ray-march + harmonic fetchAt below); the fan
+   and all wave physics live in physics.js. windSea/haz/hazard/KT/G come from the module. */
+// Protected, fetch-limited waters where the steepness estimate is justifiable (tunable after David's
+// validation). Deliberately EXCLUDES the outer WCVI coast, open Queen Charlotte Sound / Hecate, and
+// the swell-exposed western entrance of Juan de Fuca; INCLUDES the channel thresholds that are the
+// validation targets (Goletas/Nahwitti, Cattle Pass). [W,S,E,N]
+const STEEP_ZONES=[
+  [-123.30,47.00,-122.20,48.35],   // Puget Sound / Hood Canal / Admiralty
+  [-123.65,48.05,-122.70,48.55],   // E Juan de Fuca (Victoria→Pt Townsend; W of Race is swell-exposed)
+  [-123.95,48.30,-122.50,49.30],   // San Juan & Gulf Islands
+  [-125.25,48.90,-122.90,50.15],   // Strait of Georgia
+  [-127.20,49.90,-124.20,51.05],   // Discovery Passage / Desolation / Broughtons
+  [-128.15,50.35,-125.80,51.10],   // Johnstone Str + Queen Charlotte Str (incl Goletas / Nahwitti Bar)
+];
+const inSteepZone=(lo,la)=>STEEP_ZONES.some(b=>lo>=b[0]&&lo<=b[2]&&la>=b[1]&&la<=b[3]);
+
+const BASE_WATER="#c9e2ee";            // approx. USGS base-map water, so the currents legend matches
+const GRAY_LAND="#f0efef";             // approx. Esri light-gray canvas, for the wind legend
+const hex2rgb=h=>[parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255];
+function blend(hex,overHex,a){ const c=hex2rgb(hex), w=hex2rgb(overHex);
+  const m=k=>Math.round(255*(c[k]*a + w[k]*(1-a))); return `rgb(${m(0)},${m(1)},${m(2)})`; }
+
+// ownLabels = the base already bakes in city/place names; when true we must NOT add the separate
+// reference-labels overlay on top (it would double the labels — Esri reference over USGS/Esri-topo).
+const BASES={
+  usgs:{name:"USGS topo",url:"https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}",attr:"USGS The National Map",ownLabels:true},
+  topo:{name:"Esri terrain",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri",ownLabels:true},
+  imagery:{name:"Satellite",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri",ownLabels:false},
+  gray:{name:"Plain coastline",url:"https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri",ownLabels:false},
+  // Esri World Ocean Base: nautical shaded relief + bathymetry with a crisp, high-contrast shoreline —
+  // reads through the translucent wind fill far better than the gray canvas or Esri terrain (David's
+  // Broughtons field report, 2026-08-02). Cached only to z13, so upscale z14-16 rather than 404 (blank).
+  ocean:{name:"Ocean (marine)",url:"https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri — Ocean",ownLabels:false,maxNativeZoom:13},
+};
+const LABELS_URL="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
+
+/* ---------- Modes ----------
+   A mode only changes: which tiles draw, the colour ramp/alpha/discard threshold pushed to the
+   shader, the arrow convention, and the base map. The Leaflet view is never touched, so flipping
+   layers keeps the exact same coordinates — the whole point of the app. */
+const MODES={
+  current:{ label:"Currents", edges:CUR_EDGES, cols:CUR_COL, alpha:0.85,
+            // <1 kt is left unshaded so the terrain base reads through (and DRY discards)
+            minDraw:1.0, unit:"kt", base:"usgs", labels:false, arrowFlip:0, arrowMin:0.2,
+            legendOver:BASE_WATER, mesh:true },
+  // alpha defaults to 0.72 (the Fill opacity slider overrides it): the Esri reference layer carries
+  // place names but NOT the shoreline, so the fill must stay sheer enough for the gray canvas's land
+  // to read through. Above ~0.8 the coast vanishes under the fill.
+  wind:{    label:"Wind", edges:W_EDGES, cols:W_COL, alpha:0.72,
+            // paint every valid cell incl. F0 calm (matches hrdps_map.html); only DRY discards
+            minDraw:-1.0, unit:"km/h", base:"gray", labels:true, arrowFlip:180, arrowMin:1.0,
+            legendOver:GRAY_LAND, mesh:false },
+  // Derived hazard layer. The GL "speed" fed per cell is the BAND (2/3/4); edges map band→colour and
+  // minDraw=1.5 discards bands ≤1, giving threshold-only shading. Arrows (if on) show current SET, so
+  // a paddler sees which way the steep water is running. alpha 0.85: sparse, so it can sit opaque.
+  steep:{   label:"Steepness", edges:[2.5,3.5], cols:STEEP_COL, alpha:0.85,
+            minDraw:1.5, unit:"band", base:"gray", labels:true, arrowFlip:0, arrowMin:0.3,
+            legendOver:GRAY_LAND, mesh:false, ringsAlpha:0.5 },   // ringsAlpha = wind-fill opacity in "rings" display
+};
+let mode="current";
+// Steepness has THREE displays: "rings" (hazard rings + current arrows over the full wind field — the
+// original wind-map format), "fill" (steepness-band-shaded cells over a plain coastline), and "course"
+// (each cell shaded by the QUARTERING-sea hazard Q for a paddler steering `course`, via physics.js's
+// quarterHaz — the directional model, separate from the steepness band; cutlines = physics.js qBand,
+// v0.4). Toggled in-mode.
+// Phone: the Steep display menu is hidden (media block, more map room) and "On your course" is the
+// permanent default there — desktop keeps "Rings on wind" and the menu to switch.
+let steepStyle=matchMedia("(max-width:640px)").matches ? "course" : "rings";
+let course=225;                 // paddler heading (course steered), degrees; only used by the "course" display
+// In "rings", GL paints the WIND field (its ramp) and the overlay draws the rings; "fill" paints the
+// band ramp. glMode() picks the ramp; alphaRef() picks which opacity the slider/URL control.
+const glMode=()=> (mode==="steep"&&steepStyle==="rings") ? MODES.wind : MODES[mode];
+const alphaRef=()=> (mode==="steep"&&steepStyle==="rings") ? [MODES.steep,"ringsAlpha"] : [MODES[mode],"alpha"];
+const getAlpha=()=>{ const [o,k]=alphaRef(); return o[k]; };
+const setActiveAlpha=v=>{ const [o,k]=alphaRef(); o[k]=clampAlpha(v); };
+
+const PTL=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Vancouver',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false});
+
+// zoomAnimation off keeps the WebGL overlay perfectly registered with the tiles
+// Lock the view to the model: can't zoom out past the SSCOFS extent or pan off it.
+const map=L.map("map",{zoomAnimation:false,fadeAnimation:false,
+  maxBounds:L.latLngBounds(FULL_EXTENT).pad(0.12),maxBoundsViscosity:1.0});
+// The bookmarked ?lat/lon/z(/h), captured ONCE at script time: updateURL() starts rewriting the
+// query string as soon as the map first moves, so a later reader sees its own echo — h was the
+// cold-load restore miss's other half (a slow manifest fetch let updateURL overwrite ?h with 0
+// before boot() read it back).
+const URL_VIEW=(()=>{ const q=new URLSearchParams(location.search);
+  const lat=parseFloat(q.get("lat")), lon=parseFloat(q.get("lon")), z=parseInt(q.get("z"),10);
+  return { view:(isFinite(lat)&&isFinite(lon)&&isFinite(z))?{lat,lon,z}:null, h:parseInt(q.get("h"),10) }; })();
+// Fit to the model extent and lock min-zoom there. Done via a helper because on first load of the
+// deployed page the map box can still report 0×0 at script time — then fitBounds resolves to world
+// zoom and setMinZoom pins it there (the "whole globe" bug). Re-fit once after layout to correct it.
+// A re-fit must never discard a bookmarked view: the guards can fire either side of boot()'s
+// applyURL() (that race WAS the cold-load restore miss), so the view is re-applied right here and
+// the order stops mattering.
+function fitExtent(){ map.setMinZoom(0); map.invalidateSize(); map.fitBounds(FULL_EXTENT,{animate:false}); map.setMinZoom(map.getZoom());
+  if(URL_VIEW.view){ const v=URL_VIEW.view; map.setView([v.lat,v.lon],Math.max(v.z,map.getMinZoom()),{animate:false}); } }
+fitExtent();
+// getMinZoom()<1 = the extent fit itself never took: a URL view restored above can leave zoom≥1
+// while minZoom stayed unlocked at 0, which the two original checks alone would wrongly pass.
+const fitOK=()=> map.getSize().x>=80 && map.getZoom()>=1 && map.getMinZoom()>=1;
+requestAnimationFrame(()=>{ if(!fitOK()) fitExtent(); });
+addEventListener("load",()=>{ if(!fitOK()) fitExtent(); });
+/* Overlay stacking. The GL/arrow canvases must live INSIDE mapPane, in a pane of their own:
+   mapPane carries a transform, so it is a stacking context, and anything parented to it (a labels
+   pane, however high its z-index) can never rise above a canvas that is mapPane's sibling in the
+   container. Panes it is — then "labels" at 460 genuinely draws over the field at 450.
+   The cost: mapPane is translated as you pan, so the canvases must be re-pinned to the viewport
+   every frame (syncOverlayPos), because they are drawn in container coordinates. */
+for(const [p,z] of [["fields",450],["labels",460]]){
+  map.createPane(p); const el=map.getPane(p); el.style.zIndex=z; el.style.pointerEvents="none";
+}
+let baseLayer=null, labelLayer=null;
+function setBase(key){
+  if(baseLayer) map.removeLayer(baseLayer);
+  // className "baseTiles" scopes the contrast filter (--base-filter) to THIS layer's container only —
+  // labels sit in the "labels" pane and the field/arrow canvases in "fields", so neither is touched.
+  // maxNativeZoom (ocean) lets Leaflet upscale the last cached level instead of drawing blank tiles.
+  const b=BASES[key]; baseLayer=L.tileLayer(b.url,{maxZoom:16,maxNativeZoom:b.maxNativeZoom,attribution:b.attr,className:"baseTiles"}).addTo(map);
+  // add the reference-labels overlay only when the mode wants labels AND the base has none of its own,
+  // otherwise topo/USGS bases (which bake in their own labels) would show a doubled set of city names.
+  const want=MODES[mode].labels && !b.ownLabels;
+  if(want && !labelLayer) labelLayer=L.tileLayer(LABELS_URL,{maxZoom:16,pane:"labels"}).addTo(map);
+  if(!want && labelLayer){ map.removeLayer(labelLayer); labelLayer=null; }
+}
+// two overlay canvases in the "fields" pane: WebGL (speed) + 2D (arrows, drawn over it)
+const cont=map.getPane("fields");
+const glc=document.createElement("canvas"); glc.className="ovl"; cont.appendChild(glc);
+const arc=document.createElement("canvas"); arc.className="ovl"; cont.appendChild(arc);
+// Both canvases are drawn in CONTAINER pixels, but sit in the (translated) mapPane. Re-pin them to
+// the viewport's top-left in layer coordinates each frame so the field stays registered with tiles.
+function syncOverlayPos(){
+  const tl=map.containerPointToLayerPoint([0,0]);
+  L.DomUtil.setPosition(glc,tl); L.DomUtil.setPosition(arc,tl);
+}
+
+/* ---------- WebGL: speed-coloured triangles ----------
+   Vertices are pre-projected to Leaflet pixel space at a reference zoom Z0 (minus a local
+   origin for float precision). Per frame the shader maps them to the container:
+     container = (aPos - uTopLeft) * uScale
+   The ramp is uniform-driven (13 colours / 12 edges max), so currents (8 bins) and Beaufort
+   (13 bins) share one shader; unused edges are padded to 9999 (mediump-safe) and never fire. */
+const Z0=12, CRS=L.CRS.EPSG3857;
+const VS=`attribute vec2 aPos; attribute float aSpeed; uniform vec2 uTopLeft; uniform float uScale; uniform vec2 uSize; varying float vSpeed;
+void main(){ vec2 c=(aPos-uTopLeft)*uScale; gl_Position=vec4(c.x/uSize.x*2.0-1.0, 1.0-c.y/uSize.y*2.0, 0.0, 1.0); vSpeed=aSpeed; }`;
+const FS=`precision mediump float; varying float vSpeed; uniform vec3 uCols[13]; uniform float uEdges[12]; uniform float uAlpha; uniform float uMinDraw;
+void main(){ if(vSpeed<uMinDraw) discard; int bin=0; for(int i=0;i<12;i++){ if(vSpeed>=uEdges[i]) bin=i+1; }
+  vec3 c=uCols[12]; for(int i=0;i<13;i++){ if(i==bin) c=uCols[i]; } gl_FragColor=vec4(c,uAlpha); }`;
+let gl=null, prog=null, loc={};
+const tiles={};        // mesh region key -> tile (currents, zoomed in)
+let overview=null;     // SSCOFS whole-coast current overview
+let ovClip=null, ovClipSig="";   // the same overview, DRY-masked under the loaded mesh (syncClipOverview)
+let windTile=null;     // HRDPS whole-extent wind overview
+function initGL(){
+  // premultipliedAlpha MUST stay true (default): SRC_ALPHA blending onto a transparent clear
+  // already stores premultiplied RGB. Declaring it false makes the browser multiply by alpha a
+  // SECOND time when compositing over the tiles — which darkens every bin and collapses the key.
+  const OPTS={alpha:true,antialias:true};
+  gl=glc.getContext("webgl",OPTS) || glc.getContext("webgl2",OPTS);
+  if(!gl){ setStatus("WebGL unavailable in this browser.",true); return false; }
+  const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);
+    if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(o); return o;};
+  prog=gl.createProgram(); gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS)); gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw gl.getProgramInfoLog(prog);
+  gl.useProgram(prog);
+  loc.aPos=gl.getAttribLocation(prog,"aPos"); loc.aSpeed=gl.getAttribLocation(prog,"aSpeed");
+  loc.uTopLeft=gl.getUniformLocation(prog,"uTopLeft"); loc.uScale=gl.getUniformLocation(prog,"uScale"); loc.uSize=gl.getUniformLocation(prog,"uSize");
+  loc.uCols=gl.getUniformLocation(prog,"uCols"); loc.uEdges=gl.getUniformLocation(prog,"uEdges");
+  loc.uAlpha=gl.getUniformLocation(prog,"uAlpha"); loc.uMinDraw=gl.getUniformLocation(prog,"uMinDraw");
+  // Separate alpha blending: plain blendFunc scales the ALPHA channel by SRC_ALPHA too, leaving
+  // alpha=a² while RGB is premultiplied at a. The browser then composites a buffer whose colour and
+  // coverage disagree, pulling every speed bin off its legend colour.
+  gl.enable(gl.BLEND);
+  gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA, gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+  gl.clearColor(0,0,0,0);
+  applyModeGL();
+  return true;
+}
+function applyModeGL(){
+  if(!gl) return; const m=glMode();          // ramp source (wind's, when steep+rings)
+  const cols=new Float32Array(39);
+  for(let i=0;i<13;i++){ const c=hex2rgb(m.cols[Math.min(i,m.cols.length-1)]);
+    cols[i*3]=c[0]; cols[i*3+1]=c[1]; cols[i*3+2]=c[2]; }
+  const edges=new Float32Array(12).fill(9999);   // 9999 (not 1e9): mediump floats top out at 65504
+  m.edges.forEach((e,i)=>edges[i]=e);
+  gl.useProgram(prog);
+  gl.uniform3fv(loc.uCols,cols); gl.uniform1fv(loc.uEdges,edges);
+  gl.uniform1f(loc.uAlpha,getAlpha()); gl.uniform1f(loc.uMinDraw,m.minDraw);
+}
+function tileOrigin(bbox){ return CRS.latLngToPoint(L.latLng((bbox[1]+bbox[3])/2,(bbox[0]+bbox[2])/2),Z0); }
+function buildMeshBuffers(t,nodes,tris){
+  t.ref=tileOrigin(t.bbox);                                     // local origin (float32 precision)
+  const px=new Float64Array(nodes.length), py=new Float64Array(nodes.length);
+  for(let i=0;i<nodes.length;i++){ const p=CRS.latLngToPoint(L.latLng(nodes[i][1],nodes[i][0]),Z0); px[i]=p.x-t.ref.x; py[i]=p.y-t.ref.y; }
+  const pos=new Float32Array(t.ne*3*2); let k=0;
+  t.vtx=new Uint32Array(t.ne*3);                                // node id per vertex, for smoothing
+  for(let i=0;i<t.ne;i++){ const tr=tris[i]; for(let j=0;j<3;j++){ const n=tr[j];
+    t.vtx[i*3+j]=n; pos[k++]=px[n]; pos[k++]=py[n]; } }
+  t.posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,t.posBuf); gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
+  t.spdBuf=gl.createBuffer(); t.spd3=new Float32Array(t.ne*3);
+  t.nSum=new Float32Array(nodes.length); t.nCnt=new Float32Array(nodes.length); t.nVal=new Float32Array(nodes.length);
+}
+// Build the GL quad buffer for a regular lat/lon field tile (two triangles per cell, row 0 = north).
+// Cell size comes from bbox+cols+rows, NOT manifest res_deg: res_deg is the model's nominal spacing,
+// while the tile's actual step is (E-W)/(cols-1). They differ for the wind overview (0.02251 vs
+// 0.0225) and the drift would smear the field ~180 m at the east edge.
+function buildFieldQuads(t,cols,rows,lut){
+  const [W,S,E,N]=t.bbox, stepLon=(E-W)/(cols-1), stepLat=(N-S)/(rows-1);
+  t.ref=tileOrigin(t.bbox);
+  t.gcols=cols; t.grows=rows; t.glut=lut||null;   // grid shape: drawArrows strides ON the grid
+  const pos=new Float32Array(t.ne*6*2); let k=0;
+  for(let m=0;m<t.ne;m++){ const cell=lut?lut[m]:m, r=(cell/cols)|0, c=cell%cols;
+    const lon=W+c*stepLon, lat=N-r*stepLat; t.cx[m]=lon; t.cy[m]=lat;
+    const p1=CRS.latLngToPoint(L.latLng(lat+stepLat/2,lon-stepLon/2),Z0);
+    const p2=CRS.latLngToPoint(L.latLng(lat-stepLat/2,lon+stepLon/2),Z0);
+    const x1=p1.x-t.ref.x,y1=p1.y-t.ref.y,x2=p2.x-t.ref.x,y2=p2.y-t.ref.y;
+    pos[k++]=x1;pos[k++]=y1; pos[k++]=x2;pos[k++]=y1; pos[k++]=x2;pos[k++]=y2;
+    pos[k++]=x1;pos[k++]=y1; pos[k++]=x2;pos[k++]=y2; pos[k++]=x1;pos[k++]=y2; }
+  t.posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,t.posBuf); gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
+  t.spdBuf=gl.createBuffer();
+}
+// Which tiles draw right now. Currents: native mesh zoomed in, whole-coast overview zoomed out
+// (and while a mesh tile is still downloading). Wind: one whole-extent tile at every zoom.
+const isect=(b,x)=>b.getWest()<x[2]&&b.getEast()>x[0]&&b.getSouth()<x[3]&&b.getNorth()>x[1];
+/* Clip and include. A mesh region's bbox can clip the viewport while its water is entirely
+   off-screen — juan-de-fuca reaches up to lon -125.3, northern-georgia-strait down to -125.4 and
+   49.0N, so a viewport off Clayoquot "intersects" northern-georgia-strait in a corner of dry
+   Vancouver Island. This used to hand the whole screen to that mesh tile and drop the overview
+   outright, blanking real modelled water (measured: an 800 m pan at Clayoquot took the map from
+   arrows everywhere to zero painted pixels, and the tap readout went silent with it).
+   So draw BOTH: a second overview tile whose cells are DRY wherever a *loaded* mesh region owns
+   them. Two properties make it exact. (1) Masking on the ready set, not on all six bboxes, means a
+   region still downloading keeps its overview cover until its mesh lands — no hole, no double
+   paint. (2) A masked cell can only be on screen if its owner's bbox clips the viewport, and then
+   that tile is in `ready` and drawn — so the mask can never open a gap. Rebuilt only when the
+   ready set changes (at most once per region per session): geometry, lut and velocity bytes are
+   shared with the overview, so this is one pass over the water cells and a re-decode. */
+function syncClipOverview(){
+  if(!overview||!overview.ready){ ovClip=null; ovClipSig=""; return null; }
+  const boxes=REGIONS.filter(r=>r[4]&&tiles[r[3]]&&tiles[r[3]].ready).map(r=>r[4]);
+  const sig=boxes.map(x=>x.join(",")).join(";");
+  if(ovClip&&ovClip.src===overview&&ovClipSig===sig) return ovClip;
+  ovClipSig=sig;
+  if(!boxes.length){ ovClip=null; return null; }
+  const o=overview, ne=o.ne;
+  // Share the static geometry (posBuf/ref/grid) and the velocity bytes; only the mask, the decoded
+  // arrays and the GL speed buffer are this tile's own.
+  const t=(ovClip&&ovClip.ne===ne&&ovClip.src===o)?ovClip:{
+    key:"overview",src:o,bbox:o.bbox,vpe:6,ready:true,ne,span:o.span,spdScale:o.spdScale,
+    lut:o.lut,cx:o.cx,cy:o.cy,ref:o.ref,posBuf:o.posBuf,gcols:o.gcols,grows:o.grows,glut:o.glut,
+    spd:new Float32Array(ne),dir:new Float32Array(ne),spd3:new Float32Array(ne*6),
+    own:new Uint8Array(ne),spdBuf:gl.createBuffer()};
+  t.vel=o.vel; t.hourOf=o.hourOf; t.man=o.man;   // follow the overview across a run change
+  for(let i=0;i<ne;i++){ const lo=o.cx[i], la=o.cy[i];
+    t.own[i]=boxes.some(x=>lo>=x[0]&&lo<=x[2]&&la>=x[1]&&la<=x[3])?0:1; }
+  t.decodedHour=-1;                              // force a re-decode through the new mask
+  ovClip=t; return t;
+}
+function activeTiles(){
+  // steep "rings" paints the wind field (rings drawn separately in drawSteepRings); "fill" paints bands
+  if(mode==="steep") return steepStyle==="rings"
+    ? (windTile&&windTile.ready?[windTile]:[])
+    : (steepTile&&steepTile.ready?[steepTile]:[]);
+  if(mode==="wind") return windTile&&windTile.ready?[windTile]:[];
+  if(map.getZoom()>=MESH_ZOOM){
+    const b=map.getBounds();
+    const ready=REGIONS.filter(r=>isect(b,r[4])).map(r=>tiles[r[3]]).filter(t=>t&&t.ready);
+    // Additive, not all-or-nothing: the clipped overview covers every pixel the mesh doesn't own.
+    if(ready.length){ const oc=syncClipOverview(); return oc?[oc,...ready]:ready; }
+  }
+  return overview&&overview.ready?[overview]:[];
+}
+function drawGL(){
+  const size=map.getSize(), dpr=window.devicePixelRatio||1;
+  glc.width=size.x*dpr; glc.height=size.y*dpr; glc.style.width=size.x+"px"; glc.style.height=size.y+"px";
+  if(!gl) return; gl.viewport(0,0,glc.width,glc.height); gl.clear(gl.COLOR_BUFFER_BIT);
+  const acts=activeTiles(); if(!acts.length) return;
+  const z=map.getZoom(), scale=Math.pow(2,z-Z0);
+  const tlLL=map.containerPointToLatLng([0,0]); const tl=CRS.latLngToPoint(tlLL,Z0);
+  gl.useProgram(prog);
+  gl.uniform1f(loc.uScale, scale);
+  gl.uniform2f(loc.uSize, size.x, size.y);
+  for(const t of acts){
+    decodeTile(t);
+    gl.uniform2f(loc.uTopLeft, tl.x-t.ref.x, tl.y-t.ref.y);
+    gl.bindBuffer(gl.ARRAY_BUFFER,t.posBuf); gl.enableVertexAttribArray(loc.aPos); gl.vertexAttribPointer(loc.aPos,2,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,t.spdBuf); gl.enableVertexAttribArray(loc.aSpeed); gl.vertexAttribPointer(loc.aSpeed,1,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.TRIANGLES,0,t.ne*t.vpe);
+  }
+}
+// How many grid rows/cols to skip so drawn arrows sit ~tp screen-pixels apart, measured at the
+// tile's centre latitude (the grid is lat/lon, so px-per-cell varies only slowly across a tile).
+// ceil(tp*0.8/px) rather than round(): never denser than ~0.8·tp, so arrows can't overlap.
+// Returns null for tiles with no regular grid (currents mesh) — caller keeps the old bucket test.
+function gridStride(t,tp){
+  if(!t.gcols||!t.grows) return null;
+  const [W,S,E,N]=t.bbox, stepLon=(E-W)/(t.gcols-1), stepLat=(N-S)/(t.grows-1);
+  const clat=(S+N)/2, clon=(W+E)/2, p0=map.latLngToContainerPoint([clat,clon]);
+  const pxx=Math.abs(map.latLngToContainerPoint([clat,clon+stepLon]).x-p0.x);
+  const pxy=Math.abs(map.latLngToContainerPoint([clat+stepLat,clon]).y-p0.y);
+  if(!(pxx>0)||!(pxy>0)) return null;
+  const sc=Math.max(1,Math.ceil(tp*0.8/pxx)), sr=Math.max(1,Math.ceil(tp*0.8/pxy));
+  return {sc,sr,eff:Math.min(sc*pxx,sr*pxy)};
+}
+function drawArrows(){
+  const size=map.getSize(), dpr=window.devicePixelRatio||1;
+  arc.width=size.x*dpr; arc.height=size.y*dpr; arc.style.width=size.x+"px"; arc.style.height=size.y+"px";
+  const ctx=arc.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
+  const tp=+$("arrows").value; if(!tp) return;
+  const md=MODES[mode];
+  const b=map.getBounds(), W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth();
+  const seen=new Set();
+  ctx.strokeStyle="rgba(20,20,30,.92)"; ctx.fillStyle="rgba(20,20,30,.92)"; ctx.lineWidth=1.1;
+  const acts=activeTiles();
+  for(const t of acts){
+    decodeTile(t);
+    // Thin ON THE GRID, not by screen bucket. The old first-come pixel-bucket test aliased against
+    // the data lattice whenever the cell spacing was near tp — some buckets caught a point, their
+    // neighbours caught none — which is what made the arrows clump into wavy bands at some zooms.
+    // A row/column stride keeps a strictly uniform lattice at every zoom. (Unstructured mesh tiles
+    // have no grid: gridStride returns null and they keep the bucket test.)
+    const st=gridStride(t,tp);
+    const L2=st?Math.max(4,Math.min(12,st.eff*0.42)):Math.max(4,Math.min(12,tp*0.42));
+    for(let i=0;i<t.ne;i++){
+      const lo=t.cx[i], la=t.cy[i]; if(lo<W||lo>E||la<S||la>N) continue;
+      const s=t.spd[i]; if(isNaN(s)||s<md.arrowMin) continue;
+      if(t.arrowGate && t.arrowGate[i]<2) continue;      // steepness: arrows only in shaded (band≥2) water
+      if(st){ const cell=t.glut?t.glut[i]:i, r=(cell/t.gcols)|0, c=cell%t.gcols;
+              if(r%st.sr||c%st.sc) continue; }
+      const p=map.latLngToContainerPoint([la,lo]);
+      // Cross-tile overlap guard only (one tile can't collide with itself once strided).
+      if(!st||acts.length>1){ const q=st?tp*0.55:tp;
+        const key=((p.x/q)|0)*99999+((p.y/q)|0); if(seen.has(key)) continue; seen.add(key); }
+      // Currents store TOWARD; wind stores FROM. arrowFlip turns both into "where it's going".
+      const tw=(t.dir[i]+md.arrowFlip)*Math.PI/180, dx=Math.sin(tw), dy=-Math.cos(tw), x2=p.x+dx*L2, y2=p.y+dy*L2;
+      ctx.beginPath(); ctx.moveTo(p.x-dx*L2,p.y-dy*L2); ctx.lineTo(x2,y2); ctx.stroke();
+      const a1=tw+2.5,a2=tw-2.5,hs=L2*0.5;
+      ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(x2+Math.sin(a1)*hs,y2-Math.cos(a1)*hs); ctx.lineTo(x2+Math.sin(a2)*hs,y2-Math.cos(a2)*hs); ctx.closePath(); ctx.fill();
+    }
+  }
+}
+function render(){ syncOverlayPos(); drawGL();
+  if(mode==="steep"&&steepStyle==="rings") drawSteepRings(); else drawArrows(); }
+/* "Rings on wind": over the full wind fill, at a decimated set of protected-water cells, draw a
+   hazard ring (colour+weight by band) with a cyan current dot+arrow — the original wind-map format.
+   Only cells with band ≥ 1 draw (where wind is steepening the current), so slack water stays clear
+   and the wind pattern shows through. Within each screen bucket the WORST band wins, so decimation
+   never hides the more dangerous cell. The Arrows control sets ring spacing; "Off" hides the current
+   arrows but keeps the rings + dots. */
+function drawSteepRings(){
+  const size=map.getSize(), dpr=window.devicePixelRatio||1;
+  arc.width=size.x*dpr; arc.height=size.y*dpr; arc.style.width=size.x+"px"; arc.style.height=size.y+"px";
+  const ctx=arc.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
+  if(!steepTile||!steepTile.ready) return;
+  if($("windArrows").checked) drawWindArrowsOn(ctx);      // white wind barbs UNDER the rings
+  decodeTile(steepTile);
+  const t=steepTile, b=map.getBounds(), W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth();
+  const tp=+$("arrows").value, spacing=tp?Math.max(tp*2.4,42):50, showArrows=tp>0;
+  const buck=new Map();
+  for(let i=0;i<t.ne;i++){
+    const band=t.band[i]; if(band<1) continue;
+    const lo=t.cx[i], la=t.cy[i]; if(lo<W||lo>E||la<S||la>N) continue;
+    const p=map.latLngToContainerPoint([la,lo]);
+    const key=((p.x/spacing)|0)*99999+((p.y/spacing)|0);
+    const cur=buck.get(key);
+    if(!cur||band>cur.band||(band===cur.band&&t.spd[i]>cur.spd)) buck.set(key,{i,band,spd:t.spd[i],p});
+  }
+  for(const {i,band,spd,p} of buck.values()){
+    const rs=RING[band];
+    ctx.globalAlpha=rs.a; ctx.strokeStyle=rs.col; ctx.lineWidth=rs.lw;
+    ctx.beginPath(); ctx.arc(p.x,p.y,rs.r,0,7); ctx.stroke(); ctx.globalAlpha=1;
+    ctx.beginPath(); ctx.arc(p.x,p.y,3.1,0,7); ctx.fillStyle="#00b4d8"; ctx.fill();
+    ctx.strokeStyle="#023047"; ctx.lineWidth=1.4; ctx.stroke();
+    if(showArrows && spd>=0.15){
+      const dir=t.dir[i]*Math.PI/180, dx=Math.sin(dir), dy=-Math.cos(dir);
+      const Ln=Math.max(9,Math.min(34,spd*13)), x2=p.x+dx*Ln, y2=p.y+dy*Ln;
+      ctx.strokeStyle="#00b4d8"; ctx.lineWidth=2.6;
+      ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(x2,y2); ctx.stroke();
+      const a1=dir+2.6,a2=dir-2.6,hs=7; ctx.fillStyle="#00b4d8";
+      ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(x2+Math.sin(a1)*hs,y2-Math.cos(a1)*hs); ctx.lineTo(x2+Math.sin(a2)*hs,y2-Math.cos(a2)*hs); ctx.closePath(); ctx.fill();
+    }
+  }
+}
+// White downwind arrows over the whole wind field (steep+rings, toggled by the Wind arrows box), so
+// wind DIRECTION reads directly, not only via the fill colour. Dark halo keeps them legible on pale fill.
+function drawWindArrowsOn(ctx){
+  if(!windTile||!windTile.ready) return;
+  decodeTile(windTile);
+  const t=windTile, b=map.getBounds(), W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth();
+  const spacing=40, seen=new Set(), L=6.5;
+  for(let i=0;i<t.ne;i++){
+    const s=t.spd[i]; if(isNaN(s)||s<6) continue;         // km/h; skip near-calm
+    const lo=t.cx[i], la=t.cy[i]; if(lo<W||lo>E||la<S||la>N) continue;
+    const p=map.latLngToContainerPoint([la,lo]);
+    const key=((p.x/spacing)|0)*99999+((p.y/spacing)|0); if(seen.has(key)) continue; seen.add(key);
+    const tw=(t.dir[i]+180)*Math.PI/180, dx=Math.sin(tw), dy=-Math.cos(tw);
+    const x1=p.x-dx*L, y1=p.y-dy*L, x2=p.x+dx*L, y2=p.y+dy*L;
+    ctx.lineWidth=3.2; ctx.strokeStyle="rgba(20,30,45,.5)";
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.lineWidth=1.5; ctx.strokeStyle="rgba(255,255,255,.96)";
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    const a1=tw+2.6,a2=tw-2.6,hs=4.4; ctx.fillStyle="rgba(255,255,255,.96)";
+    ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(x2+Math.sin(a1)*hs,y2-Math.cos(a1)*hs); ctx.lineTo(x2+Math.sin(a2)*hs,y2-Math.cos(a2)*hs); ctx.closePath(); ctx.fill();
+  }
+}
+map.on("move zoomend resize",render);
+// Viewport-size changes Leaflet's own trackResize can miss: iOS Safari's URL-bar collapse/expand
+// (a visualViewport resize, on some versions without a window resize) and rotation. One debounced
+// path re-measures the container; invalidateSize fires the map's "resize" → render when the size
+// really changed, and the explicit render() covers the no-op case so syncOverlayPos re-pins the
+// GL/arrow canvases either way.
+let vpTimer=null;
+function onViewportChange(){ clearTimeout(vpTimer);
+  vpTimer=setTimeout(()=>{ if(window.mobileLayout) mobileLayout();   // breakpoint crossing rides this path too
+    map.invalidateSize({animate:false}); render(); },120); }
+addEventListener("resize",onViewportChange);
+addEventListener("orientationchange",onViewportChange);
+if(window.visualViewport) visualViewport.addEventListener("resize",onViewportChange);
+
+/* ---------- hover / tap readout ----------
+   Point at the map to read the model at that spot: steepness (band + wind, current, wind-sea, fetch),
+   wind (speed/Beaufort/direction), or current (speed/set), per the active layer. Coalesced to one
+   animation frame per move so brute-force nearest-cell stays cheap. Tap does the same on touch. */
+const tip=$("tip");
+// #tip = [✕ button][.tipBody]. The readout HTML goes into .tipBody so the persistent ✕ survives each
+// re-render (innerHTML on #tip itself would wipe it). ✕ only shows in pinned mode (CSS).
+const tipClose=document.createElement("button");
+tipClose.className="tipClose"; tipClose.textContent="✕"; tipClose.setAttribute("aria-label","Close readout");
+tipClose.onclick=e=>{ e.stopPropagation(); hideTip(); };
+const tipBody=document.createElement("div"); tipBody.className="tipBody";
+tip.append(tipClose,tipBody);
+// Pin the readout (vs. follow the cursor) on touch/phone: coarse pointer OR the mobile layout width.
+// Re-evaluated per readout so a resize across the breakpoint switches behaviour without reload.
+const pinMode=()=> matchMedia("(pointer:coarse)").matches || matchMedia("(max-width:640px)").matches;
+const COMPASS=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const compass=d=>COMPASS[Math.round(((d%360)+360)%360/22.5)%16];
+const beauF=kmh=>{ let f=0; while(f<W_EDGES.length && kmh>=W_EDGES[f]) f++; return f; };
+function row(k,v){ return `<div><span class="k">${k}:</span> ${v}</div>`; }
+/* Snap radius for the readout. The steep tile holds ONLY wet in-zone cells, so a generous radius
+   snaps land taps (and out-of-zone hovers, e.g. just east of a wind plume) kilometres to the nearest
+   wet cell and shows ITS readout — a wrong answer, seen by David on phone (Q-rose on land taps) and
+   desktop (roughness east of a San Juans plume). 0.016° ≈ 0.7 of the 0.0225° grid cell: any point ON
+   a cell is within 0.0135° (half-diagonal, lon cos-scaled) of its centre, so on-water taps always
+   hit, while points >~1.8 km from water get no tip. Also covers the mesh (~0.004° cells). */
+const SNAP_DEG=0.016;
+function nearestCell(t,lat,lon,maxDeg){
+  let best=-1, bd=maxDeg*maxDeg, cosm=Math.cos(lat*Math.PI/180);
+  for(let i=0;i<t.ne;i++){ const dlo=(t.cx[i]-lon)*cosm, dla=t.cy[i]-lat, d=dlo*dlo+dla*dla;
+    if(d<bd){ bd=d; best=i; } }
+  return best;
+}
+let hoverLL=null, hoverEv=null, hoverRAF=0;
+function onHover(e){ hoverLL=e.latlng; hoverEv=e.originalEvent; if(!hoverRAF) hoverRAF=requestAnimationFrame(doHover); }
+function hideTip(){ hoverLL=null; tip.style.display="none"; tip.classList.remove("pinned"); }
+// Re-run the readout at the last-pointed spot after the data underneath it changes (hour scrub, steep
+// display / course change) so a pinned panel refreshes in place instead of showing stale numbers.
+function refreshTip(){ if(hoverLL && tip.style.display!=="none") doHover(); }
+// Where the governing wave sits relative to the paddler (r = angle off the bow, 0…180).
+const sideWord=r=> r<=30?"head sea, on the bow":r<=60?"on the bow quarter":r<=110?"on the BEAM"
+                 :r<=160?"on the STERN QUARTER":"following, astern";
+/* Mini polar Q-rose for the course hover tip: Q(heading) as a filled polar curve, concentric rings at
+   the v0.4 qBand cutlines (coloured per band), a white arm on the steered course (white dashed = the
+   return heading), a cyan tick on the current set. ISOLATED on purpose — rose-in-tip vs a side panel is
+   David's open call, so this stays one self-contained function that can be relocated whole. */
+const QCUT=[0.12,0.28,0.50,0.75];                        // v0.4 cutlines (physics.js qBand) as rose radii
+function courseRoseSVG(t,m,crs){
+  const R=50, cx=62, cy=62;
+  const pt=(ang,rad)=>[cx+rad*Math.sin(ang*Math.PI/180), cy-rad*Math.cos(ang*Math.PI/180)];
+  let poly="";
+  for(let i=0;i<=36;i++){ const a=i*10, q=t.qAt(m,a)||0, [x,y]=pt(a,q*R);
+    poly+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; }
+  poly+="Z";
+  let rings="";
+  for(let i=0;i<QCUT.length;i++)
+    rings+=`<circle cx="${cx}" cy="${cy}" r="${(QCUT[i]*R).toFixed(1)}" fill="none" stroke="${RING[i+1].col}" stroke-width="1" opacity="0.55"/>`;
+  rings+=`<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="#9fb3c8" stroke-width="1"/>`;
+  let ticks="";
+  for(const [a,lbl] of [[0,"N"],[90,"E"],[180,"S"],[270,"W"]]){ const [lx,ly]=pt(a,R+8);
+    ticks+=`<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" font-size="8" fill="#8296ad" text-anchor="middle">${lbl}</text>`; }
+  const [ax,ay]=pt(crs,R), [rx,ry]=pt((crs+180)%360,R);
+  const arm=`<line x1="${cx}" y1="${cy}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#fff" stroke-width="2.4"/>`
+           +`<line x1="${cx}" y1="${cy}" x2="${rx.toFixed(1)}" y2="${ry.toFixed(1)}" stroke="#fff" stroke-width="1" stroke-dasharray="2 2" opacity="0.6"/>`;
+  let cur="";
+  if(t.spd[m]>=0.1){ const [sx,sy]=pt(t.dir[m],R), [s0x,s0y]=pt(t.dir[m],R-7);
+    cur=`<line x1="${s0x.toFixed(1)}" y1="${s0y.toFixed(1)}" x2="${sx.toFixed(1)}" y2="${sy.toFixed(1)}" stroke="#00b4d8" stroke-width="2.4"/>`; }
+  return `<svg width="124" height="124" viewBox="0 0 124 124" style="display:block;margin:5px auto 0">`
+        +rings+ticks
+        +`<path d="${poly}" fill="rgba(255,45,149,0.38)" stroke="#ff2d95" stroke-width="1.6"/>`
+        +cur+arm
+        +`<circle cx="${cx}" cy="${cy}" r="2" fill="#fff"/></svg>`
+        +`<div style="text-align:center;opacity:.6;font-size:11px">Q by heading · white = your course</div>`;
+}
+function doHover(){
+  hoverRAF=0; if(!hoverLL) return;
+  const lat=hoverLL.lat, lon=hoverLL.lng; let html=null;
+  if(mode==="steep" && steepTile&&steepTile.ready){
+    decodeTile(steepTile); const t=steepTile, m=nearestCell(t,lat,lon,SNAP_DEG);
+    if(m>=0 && t.wKt[m]===t.wKt[m]){                        // wet cell (not NaN)
+      if(steepStyle==="course" && t.qComps && t.qComps[m]){
+        const Qc=t.qAt(m,course), bc=qBand(Qc), Qr=t.qAt(m,(course+180)%360), br=qBand(Qr), gov=t.qGov(m,course);
+        const col=bc<1?"#9fb3c8":RING[Math.min(bc,4)].col;
+        html=`<b>On course ${compass(course)} (${Math.round(snap16(course))}°) — ${RING_WORD[Math.min(bc,4)]}</b>`
+          +`<div class="hz" style="color:${col}">${bc<1?"No quartering hazard on this heading (head / following / calm)":RING_LBL[Math.min(bc,4)]} · Q ${Qc.toFixed(2)}</div>`;
+        if(gov){ const brk=gov.b>=0.6?"breaking":gov.b>=0.3?"steep, near breaking":"steepening";
+          html+=row("Governing sea", `${gov.Hamp.toFixed(1)} m, ${brk}, from ${compass(gov.from)} — ${sideWord(gov.r)}`);
+          if(gov.en>1.08) html+=`<div class="hz" style="color:${RING[4].col}">surf-driving the stern (broach risk)</div>`; }
+        html+=row("On return", `${compass((course+180)%360)} — ${RING_WORD[Math.min(br,4)]} · Q ${Qr.toFixed(2)}`)
+          +row("Wind", `${Math.round(t.wKt[m])} kt from ${compass(t.wFrom[m])}`)
+          +row("Current", t.spd[m]>=0.1?`${t.spd[m].toFixed(1)} kt toward ${compass(t.dir[m])}`:"slack (&lt;0.1 kt)");
+        if(t.qm[m]>1.02) html+=row("Confused sea", `×${t.qm[m].toFixed(2)} (short-crested — no single brace side)`);
+        html+=courseRoseSVG(t,m,course);
+      } else {
+      const band=Math.max(0,t.band[m]|0), col=band<1?"#9fb3c8":RING[Math.min(band,4)].col;
+      html=`<b>Roughness — ${RING_WORD[Math.min(band,4)]}</b>`
+        +`<div class="hz" style="color:${col}">${band<1?"No steepening (calm / following sea)":RING_LBL[Math.min(band,4)]}</div>`
+        +row("Wind", `${Math.round(t.wKt[m])} kt from ${compass(t.wFrom[m])} (${Math.round(t.wFrom[m])}°)`)
+        +row("Current", t.spd[m]>=0.1?`${t.spd[m].toFixed(1)} kt toward ${compass(t.dir[m])} (${Math.round(t.dir[m])}°)`:"slack (&lt;0.1 kt)")
+        +row("Wind-sea", t.Hs[m]>0.05?`${t.Hs[m].toFixed(1)} m @ ${t.Tp[m].toFixed(1)} s`:"negligible")
+        +row("Fetch", `${t.fUse[m]>=60?"≥60":t.fUse[m].toFixed(0)} km upwind`);
+      }
+    } else if(!inSteepZone(lon,lat) && overview && overview.ready && nearestCell(overview,lat,lon,SNAP_DEG)>=0){
+      // Out-of-zone water: the steepness heuristic is a wind-vs-current estimate that does NOT model
+      // ocean swell, so it's only computed inside the sheltered STEEP_ZONES. A tap on exposed water
+      // outside them used to show NOTHING — reading as "safe" next to the purple hazard. The overview
+      // (SSCOFS, water-only) proximity test gates on water so land taps still stay silent. Explain why.
+      html=`<b>Roughness not analyzed here</b>`
+        +`<div class="hz" style="color:#f4a52a">Open, swell-exposed water</div>`
+        +`<div>The roughness layer is a wind-vs-current estimate — it doesn't model ocean swell, so it only covers protected, fetch-limited waters.</div>`
+        +`<div style="margin-top:4px"><span class="k">Blank isn't calm:</span> treat exposed water as potentially rougher, not safe.</div>`;
+    }
+  } else if(mode==="wind" && windTile&&windTile.ready){
+    decodeTile(windTile); const t=windTile, m=nearestCell(t,lat,lon,SNAP_DEG);
+    if(m>=0 && !isNaN(t.spd[m])){
+      html=`<b>Wind</b>`
+        +row("Speed", `${Math.round(t.spd[m])} km/h · ${Math.round(t.spd[m]/1.852)} kt · F${beauF(t.spd[m])}`)
+        +row("From", `${compass(t.dir[m])} (${Math.round(t.dir[m])}°)`);
+    }
+  } else if(mode==="current"){
+    let best=-1,bt=null,bd=SNAP_DEG*SNAP_DEG, cosm=Math.cos(lat*Math.PI/180);
+    for(const t of activeTiles()){ decodeTile(t);
+      for(let i=0;i<t.ne;i++){ const s=t.spd[i]; if(isNaN(s)) continue;
+        const dlo=(t.cx[i]-lon)*cosm, dla=t.cy[i]-lat, d=dlo*dlo+dla*dla;
+        if(d<bd){ bd=d; best=i; bt=t; } } }
+    if(best>=0) html=`<b>Current</b>`
+      +row("Speed", `${bt.spd[best].toFixed(1)} kt`)
+      +row("Set", `toward ${compass(bt.dir[best])} (${Math.round(bt.dir[best])}°)`);
+  }
+  if(!html){ hideTip(); return; }
+  tipBody.innerHTML=html; tip.style.display="block";
+  if(pinMode()){
+    // pinned to the bottom of the viewport by CSS; clear any leftover follow-position inline styles
+    tip.classList.add("pinned"); tip.style.left=tip.style.top="";
+    return;
+  }
+  tip.classList.remove("pinned");
+  const pad=14, ev=hoverEv, tw=tip.offsetWidth, th=tip.offsetHeight;
+  let x=ev.clientX+pad, y=ev.clientY+pad;
+  if(x+tw>innerWidth-6) x=ev.clientX-pad-tw;
+  if(y+th>innerHeight-6) y=ev.clientY-pad-th;
+  tip.style.left=Math.max(4,x)+"px"; tip.style.top=Math.max(4,y)+"px";
+}
+// Desktop = cursor-follow tip driven by mousemove; touch = tap-driven pinned panel. On touch the
+// readout must NOT react to the mousemove/mouseout iOS synthesises around a tap, or the panel flashes
+// open and shut in <0.2 s (it appears on the tap's `click`, then a stray emulated mouseout/mousemove
+// immediately calls hideTip). In pinMode() we therefore ignore those and dismiss only on explicit
+// intent: the ✕, a tap that resolves to no data (handled in doHover), or a real pan/zoom gesture.
+map.on("mousemove",e=>{ if(!pinMode()) onHover(e); });
+map.on("mouseout", ()=>{ if(!pinMode()) hideTip(); });
+map.on("click",onHover);            // tap readout on touch devices
+map.on("dragstart zoomstart",hideTip);   // a genuine drag/zoom gesture — NOT the incidental movestart/inertia that follows a tap
+
+/* ===================== offline data store (Unified_Map_Phone_Plan step 4) =====================
+   Modeled on the phone-proven hrdps-wind-map offline manager. Saved packs live in Cache Storage
+   "salishmap-data-v1" — which sw.js never versions or deletes, so they survive shell updates —
+   under synthetic ./__offline__/ URLs:
+     man/{meshvel,field,hrdps}.json        — the manifest each pack below was fetched WITH
+     bin/field, bin/wind                   — whole-coast overview bins (the shared BASE pack, ~4.7 MB)
+     region/<rk>.{mesh.json,bin,meta.json} — per-trip-region currents packs (mesh + meshvel)
+   COHERENCE RULE: a bin is only ever written together with the manifest it was fetched against,
+   and every cached tile is built on ITS OWN pack's hour axis (meta.hours / the paired manifest) —
+   so mixed-run packs can never be indexed on the wrong axis (silent wrong forecast); at worst they
+   shrink the master timeline via adoptAxis() (TIMES = intersection of every LOADED axis).
+   Bin bodies are stored as fetched (possibly gzip-on-wire); the loaders' existing 1f 8b magic-byte
+   check inflates either form. A localStorage mirror of the index detects iOS purging the cache
+   (index says "saved", cache says "gone" → eviction warning + clear). */
+const DATA_CACHE="salishmap-data-v1", OKEY="./__offline__/", LS_INDEX="sm_offline_index";
+const FORCE_OFFLINE=new URLSearchParams(location.search).get("offline")==="1";  // ?offline=1 = desktop airplane-mode sim
+if(FORCE_OFFLINE){ // Block cross-origin fetch() only (R2 data): the same-origin shell comes from the
+  // SW cache, mirroring airplane mode. NOTE basemap tiles are <img>, not fetch(), so they are NOT
+  // blocked here — only real airplane mode shows the blank-basemap state (overlays-offline-only v1).
+  const realFetch=window.fetch.bind(window);
+  window.fetch=(u,o)=>{ const s=String((u&&u.url)||u);
+    return (s.startsWith("http")&&!s.startsWith(location.origin)) ? Promise.reject(new TypeError("Simulated offline")) : realFetch(u,o); };
+  // make test mode unmissable — a simulated outage must never look like a real one
+  const tb=document.createElement("div");
+  tb.style.cssText="background:#fff7ed;border:2px solid #b45309;color:#b45309;font-size:14px;font-weight:700;padding:10px 14px;border-radius:10px;margin-bottom:10px;flex:0 0 auto";
+  tb.innerHTML='⚠ OFFLINE TEST MODE — a simulation, not a real outage. <a href="./" style="color:#b45309">Tap for live data</a>.';
+  document.querySelector("main").prepend(tb);
+}
+const isOnline=()=>!FORCE_OFFLINE && navigator.onLine!==false;
+let evictionNote=null;                     // set when the OS purged a saved copy, so offline errors explain why
+const dataSrc={cur:null,wind:null};        // "live" | "cache" — provenance of each painted overview field
+const manSrc={mm:null,fm:null,wm:null};    // provenance of each manifest adopted at boot
+
+function netFetch(url, ms){   // fail-fast offline; abort on timeout so one-bar signal can't hang a refresh
+  if(!isOnline()) return Promise.reject(new Error("offline"));
+  const ac=new AbortController(), t=setTimeout(()=>ac.abort(), ms||15000);
+  return fetch(url,{cache:"no-store",signal:ac.signal}).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r; })
+         .finally(()=>clearTimeout(t));
+}
+const dstore=()=>caches.open(DATA_CACHE);
+async function ocGetJSON(k){ try{ const r=await (await dstore()).match(OKEY+k); return r?await r.json():null; }catch(_){ return null; } }
+async function ocGetBytes(k){ try{ const r=await (await dstore()).match(OKEY+k); return r?new Uint8Array(await r.arrayBuffer()):null; }catch(_){ return null; } }
+async function ocPut(k,body,type){ await (await dstore()).put(OKEY+k, new Response(body,{headers:{"Content-Type":type||"application/octet-stream"}})); }
+async function haveCached(k){ try{ return !!(await (await dstore()).match(OKEY+k)); }catch(_){ return false; } }
+function lsIndex(){ try{ return JSON.parse(localStorage.getItem(LS_INDEX))||{}; }catch(_){ return {}; } }
+function lsIndexSet(ix){ try{ localStorage.setItem(LS_INDEX, JSON.stringify(ix)); }catch(_){} }
+function noteEviction(what, clear){        // index says saved, cache says gone → iOS storage pressure
+  evictionNote="⚠ The saved offline copy ("+what+") was removed by the system (storage pressure) — connect and tap “⬇ Save offline” again.";
+  const ix=lsIndex(); clear(ix); lsIndexSet(ix); refreshOfflineUI();
+}
+async function dlProgress(url, name, ms){  // stream a .bin so slow links show KB progress; returns WIRE bytes
+  const resp=await netFetch(url, ms||180000);
+  if(!resp.body||!resp.body.getReader) return new Uint8Array(await resp.arrayBuffer());
+  const rd=resp.body.getReader(), chunks=[]; let got=0, shown=0;
+  for(;;){ const {done,value}=await rd.read(); if(done) break;
+    chunks.push(value); got+=value.length;
+    if(got-shown>131072){ shown=got; setStatus(`Downloading ${name}… ${Math.round(got/1024)} KB`); } }
+  const out=new Uint8Array(got); let o=0; for(const c of chunks){ out.set(c,o); o+=c.length; }
+  return out;
+}
+// Region whose bbox holds the map centre (REGIONS order = ownership priority in the overlaps) —
+// the save unit for the per-trip currents pack. null in unmodeled water → base-only save.
+function curRegionKey(){ const c=map.getCenter(), lo=c.lng, la=c.lat;
+  const r=REGIONS.find(x=>lo>=x[4][0]&&lo<=x[4][2]&&la>=x[4][1]&&la<=x[4][3]); return r?r[3]:null; }
+// Shrink the master timeline to a cached pack's hour axis. Every loaded tile keeps its OWN hourOf;
+// TIMES ⊆ every loaded axis is the invariant that keeps makeHourOf from ever throwing (or worse,
+// silently reading another run's hours).
+function adoptAxis(hoursMs){
+  const t2=inter(TIMES,hoursMs);
+  if(!t2.length){ setStatus("Saved packs share no forecast hours — connect and re-save together.",true); return false; }
+  if(t2.length!==TIMES.length || t2[0]!==TIMES[0]){
+    TIMES=t2; $("time").max=TIMES.length-1;
+    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h, both models)`;
+    for(const t of [overview,windTile,steepTile,...Object.values(tiles)]) if(t) t.decodedHour=-1;
+    setHour(Math.min(hour,TIMES.length-1));
+  }
+  return true;
+}
+
+async function saveOffline(){
+  const b=$("saveBtn"); b.disabled=true; b.textContent="Saving…";
+  try{
+    setStatus("Saving for offline — fetching indexes…");
+    // Fresh manifests = the snapshot every pack written below is paired with.
+    const [mm,fm,wm]=await Promise.all([
+      netFetch(R2+"/sscofs/meshvel/manifest.json",15000).then(r=>r.json()),
+      netFetch(R2+"/sscofs/field/manifest.json",15000).then(r=>r.json()),
+      netFetch(R2+"/hrdps/manifest.json",15000).then(r=>r.json()),
+    ]);
+    const ix=lsIndex();
+    // BASE pack (shared, region-independent). A bin already saved at this run isn't re-downloaded.
+    if(!(ix.base && ix.base.runCur===fm.run && await haveCached("bin/field"))){
+      const wire=await dlProgress(R2+"/sscofs/field/overview.bin","current overview");
+      await ocPut("bin/field",wire); await ocPut("man/field.json",JSON.stringify(fm),"application/json");
+    }
+    if(!(ix.base && ix.base.runWind===wm.run && await haveCached("bin/wind"))){
+      const wire=await dlProgress(R2+"/hrdps/overview.bin","wind overview");
+      await ocPut("bin/wind",wire); await ocPut("man/hrdps.json",JSON.stringify(wm),"application/json");
+    }
+    ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run};
+    // Per-region currents pack for wherever the map is looking (add more by navigating + saving again).
+    const rk=curRegionKey();
+    if(rk){
+      await saveRegionPack(rk,mm);
+      ix.regions=ix.regions||{}; ix.regions[rk]={run:mm.run,savedAt:Date.now(),name:REGIONS.find(x=>x[3]===rk)[0]};
+    }
+    await ocPut("man/meshvel.json",JSON.stringify(mm),"application/json");   // offline boot's region index + axis
+    lsIndexSet(ix); evictionNote=null;
+    if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});  // ask iOS not to evict
+    setStatus("Saved for offline: base pack (wind + current overviews)"+(rk?" + "+ix.regions[rk].name+" currents":"")
+      +". Kept current automatically whenever you open the map online; ↻ Refresh checks by hand.");
+  }catch(e){ setStatus(isOnline()?"Save failed: "+e.message:"No connection — connect to wifi to save.",true); }
+  refreshOfflineUI(); updateStale();
+}
+async function saveRegionPack(rk,mm){    // mesh + meshvel, paired with mm's run/axis via meta.json
+  const rm=mm.regions[rk], reg=REGIONS.find(x=>x[3]===rk);
+  const meta0=await ocGetJSON("region/"+rk+".meta.json");
+  let meshJson=(meta0 && meta0.n_elem===rm.n_elem) ? await ocGetJSON("region/"+rk+".mesh.json") : null;
+  if(!meshJson) meshJson=await (await netFetch(R2+"/sscofs/"+rm.mesh+"?v="+rm.n_elem,180000)).json();
+  if(!(meta0 && meta0.run===mm.run && await haveCached("region/"+rk+".bin"))){
+    const wire=await dlProgress(R2+"/sscofs/meshvel/"+rm.file,reg[0]+" currents");
+    await ocPut("region/"+rk+".bin",wire);
+  }
+  await ocPut("region/"+rk+".mesh.json",JSON.stringify(meshJson),"application/json");
+  await ocPut("region/"+rk+".meta.json",JSON.stringify({run:mm.run,hours:mm.hours,n_elem:rm.n_elem,name:reg[0],savedAt:Date.now()}),"application/json");
+}
+async function refreshNow(){   // manifests first (~5 KB); re-download only packs whose run is newer
+  const b=$("refreshBtn"); b.disabled=true; b.textContent="Checking…";
+  try{
+    const ix=lsIndex();
+    if(!ix.base && !Object.keys(ix.regions||{}).length){ location.reload(); return; }  // nothing saved: plain reload
+    const [mm,fm,wm]=await Promise.all([
+      netFetch(R2+"/sscofs/meshvel/manifest.json",12000).then(r=>r.json()),
+      netFetch(R2+"/sscofs/field/manifest.json",12000).then(r=>r.json()),
+      netFetch(R2+"/hrdps/manifest.json",12000).then(r=>r.json()),
+    ]);
+    let changed=false;
+    if(ix.base){
+      if(ix.base.runCur!==fm.run || !await haveCached("bin/field")){
+        const wire=await dlProgress(R2+"/sscofs/field/overview.bin","current overview");
+        await ocPut("bin/field",wire); await ocPut("man/field.json",JSON.stringify(fm),"application/json"); changed=true; }
+      if(ix.base.runWind!==wm.run || !await haveCached("bin/wind")){
+        const wire=await dlProgress(R2+"/hrdps/overview.bin","wind overview");
+        await ocPut("bin/wind",wire); await ocPut("man/hrdps.json",JSON.stringify(wm),"application/json"); changed=true; }
+      ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run};
+    }
+    for(const rk of Object.keys(ix.regions||{})){       // ALL saved regions move to the new run together
+      if(ix.regions[rk].run!==mm.run || !await haveCached("region/"+rk+".bin")){
+        await saveRegionPack(rk,mm);
+        ix.regions[rk]={run:mm.run,savedAt:Date.now(),name:ix.regions[rk].name}; changed=true; }
+    }
+    await ocPut("man/meshvel.json",JSON.stringify(mm),"application/json");
+    lsIndexSet(ix); evictionNote=null;
+    if(changed) location.reload();                       // re-boot on the fresh packs (URL keeps the view)
+    else { setStatus("Up to date — every saved pack is on the latest run.");
+           b.disabled=false; b.textContent="↻ Refresh"; refreshOfflineUI(); updateStale(); }
+  }catch(e){
+    setStatus(isOnline()?"Refresh failed ("+e.message+") — keeping the saved data.":"No connection — keeping the saved data.",true);
+    b.disabled=false; b.textContent="↻ Refresh";
+  }
+}
+/* Two-clock freshness banner (persistent, re-aged every 60 s): HRDPS runs 4×/day, so the wind clock
+   keeps the wind map's proven bands (green <12 h / amber 12–24 / red >24). SSCOFS runs ~daily, so
+   24 h red would cry wolf — its bands are green <24 h / amber 24–40 / red >40 (past 40 h under 8 h
+   of the ~48 h horizon remains: treat as stale). The chip says "saved" when the painted field came
+   from the offline store rather than the network. */
+function updateStale(){
+  const el=$("stale"); if(!el) return;
+  const chip=(lbl,run,src,aH,rH)=>{ const ageH=(Date.now()-new Date(run).getTime())/3.6e6;
+    const cls=ageH>rH?"red":ageH>aH?"amber":"ok";
+    return `<span class="clk ${cls}">${lbl} run ${Math.round(ageH)} h ago${src==="cache"?" · saved":""}</span>`; };
+  const parts=[];
+  if(mode!=="wind" && RUN_CUR && dataSrc.cur) parts.push(chip("currents",RUN_CUR,dataSrc.cur,24,40));
+  if(mode!=="current" && RUN_WIND && dataSrc.wind && !windDisabled) parts.push(chip("wind",RUN_WIND,dataSrc.wind,12,24));
+  if(!isOnline()) parts.push('<span class="offnote">offline — basemap needs network</span>');
+  el.innerHTML=parts.join(" ");
+  el.style.display=parts.length?"inline-flex":"none";
+}
+setInterval(updateStale,60000);   // re-age the banner while the app sits open
+function refreshOfflineUI(){
+  const s=$("saveBtn"); if(!s) return;
+  const ix=lsIndex(), rk=curRegionKey(), regs=ix.regions||{};
+  const savedHere=!!(ix.base && (!rk || regs[rk]));
+  s.disabled=savedHere;
+  s.textContent=savedHere ? "✓ Saved for offline"
+    : rk ? "⬇ Save offline (base + "+REGIONS.find(x=>x[3]===rk)[0]+")" : "⬇ Save offline (base pack)";
+  const names=Object.values(regs).map(x=>x.name);
+  $("savedList").textContent=ix.base
+    ? "Saved: overviews"+(names.length?" + "+names.join(", "):" — move the map to a region and save to add its currents")
+    : "";
+}
+/* ============================================================================================= */
+
+let meshMan=null, fieldMan=null, windMan=null, hour=0, TIMES=[], anim=null;
+let RUN_CUR=null, RUN_WIND=null, windDisabled=false;
+async function gunzip(u8){ const ds=new DecompressionStream('gzip'); return new Uint8Array(await new Response(new Response(u8).body.pipeThrough(ds)).arrayBuffer()); }
+
+/* ---------- hour alignment ----------
+   SSCOFS and HRDPS run on different cycles (03Z vs 06Z today), so their hour axes are OFFSET and
+   have different spans. TIMES is the INTERSECTION of every loaded dataset's hour instants, in
+   epoch ms — so every slider position has real data in every layer, and steepness (step 3) can
+   assume both fields exist at the selected instant. Each tile maps a master index into its own
+   hour index by exact ms lookup; no nearest-hour fuzz, no silent clamping. */
+const inter=(a,b)=>{ const s=new Set(b); return a.filter(x=>s.has(x)); };
+function makeHourOf(hoursMs){
+  const m=new Map(hoursMs.map((v,i)=>[v,i]));
+  return h=>{ const i=m.get(TIMES[h]);
+    if(i===undefined) throw new Error("hour "+new Date(TIMES[h]).toISOString()+" missing from tile axis");
+    return i; };
+}
+const isoToMs=s=>new Date(s).getTime();
+
+function loadedSummary(){
+  const parts=Object.values(tiles).filter(t=>t.ready).map(t=>t.key);
+  const age=r=>Math.round((Date.now()-new Date(r).getTime())/3.6e6);
+  if(mode==="wind")
+    return `HRDPS 2.5 km wind · run ${PTL.format(new Date(RUN_WIND))} (${age(RUN_WIND)} h ago) · whole extent`;
+  if(mode==="steep")
+    return `Steepness risk · wind ${PTL.format(new Date(RUN_WIND))} × current ${PTL.format(new Date(RUN_CUR))} · protected waters`;
+  return `SSCOFS currents over terrain · run ${PTL.format(new Date(RUN_CUR))} (${age(RUN_CUR)} h ago) · overview${parts.length?" + "+parts.join(", "):""}`;
+}
+// Decode one tile's current hour into spd/dir (arrows) + spd3 (GL). Lazy + cached per hour.
+// spdScale converts the speed byte to the mode's unit: currents kt = byte/10, wind km/h = byte.
+// Ownership: elements inside an earlier region's bbox are skipped (spd=NaN) so overlapping
+// translucent tiles never double-blend; the owning neighbour is always loaded for any view
+// that can see the overlap, because loading is viewport-driven with the same bboxes.
+function decodeTile(t){
+  const hi=t.hourOf(hour);
+  if(t.decodedHour===hi) return; t.decodedHour=hi;
+  if(t.decodeSteep){ t.decodeSteep();      // derived layer: reads current + wind, writes band into spd3
+    if(gl){ gl.bindBuffer(gl.ARRAY_BUFFER,t.spdBuf); gl.bufferData(gl.ARRAY_BUFFER,t.spd3,gl.DYNAMIC_DRAW); }
+    return; }
+  const n=t.ne, span=t.span, vel=t.vel, lut=t.lut, own=t.own, vpe=t.vpe, sc=t.spdScale;
+  const sBase=hi*2*span, dBase=sBase+span;
+  for(let i=0;i<n;i++){ const j=lut?lut[i]:i; const s=vel[sBase+j];
+    const skip=(s===255)||(own&&!own[i]);
+    t.spd[i]=skip?NaN:s*sc; t.dir[i]=vel[dBase+j]*360/255; }
+  if(t.vtx){
+    // Smooth fill (native mesh): the model gives ONE speed per triangle, which reads as flat
+    // jagged facets in the narrows. Average element speeds onto the shared nodes and let the
+    // GPU interpolate; binning happens per-fragment AFTER interpolation, so the map still shows
+    // exactly the legend colours — bin edges just become iso-speed contours, not triangle edges.
+    // Dry/unowned triangles write DRY at all 3 corners so they stay discarded (never painted).
+    // Arrows keep the exact per-element values; only the paint is smoothed.
+    const nS=t.nSum, nC=t.nCnt, nV=t.nVal, vtx=t.vtx;
+    nS.fill(0); nC.fill(0);
+    for(let i=0;i<n;i++){ const s=t.spd[i]; if(s!==s) continue;
+      const b=i*3; nS[vtx[b]]+=s; nC[vtx[b]]++; nS[vtx[b+1]]+=s; nC[vtx[b+1]]++; nS[vtx[b+2]]+=s; nC[vtx[b+2]]++; }
+    for(let j2=0;j2<nV.length;j2++) nV[j2]=nC[j2]?nS[j2]/nC[j2]:0;
+    for(let i=0;i<n;i++){ const b=i*3;
+      if(t.spd[i]!==t.spd[i]){ t.spd3[b]=DRY; t.spd3[b+1]=DRY; t.spd3[b+2]=DRY; }
+      else { t.spd3[b]=nV[vtx[b]]; t.spd3[b+1]=nV[vtx[b+1]]; t.spd3[b+2]=nV[vtx[b+2]]; } }
+  } else {
+    for(let i=0;i<n;i++){ const s=t.spd[i], v=(s!==s)?DRY:s, b=i*vpe; for(let k=0;k<vpe;k++) t.spd3[b+k]=v; }
+  }
+  if(gl){ gl.bindBuffer(gl.ARRAY_BUFFER,t.spdBuf); gl.bufferData(gl.ARRAY_BUFFER,t.spd3,gl.DYNAMIC_DRAW); }
+}
+async function ensureTile(key){
+  if(tiles[key]) return; const reg=REGIONS.find(r=>r[3]===key);
+  const t=tiles[key]={key,bbox:reg[4],vpe:3,ready:false,decodedHour:-1,spdScale:0.1};
+  const rm=meshMan.regions[key];
+  try{
+    // Offline step 4: (1) a saved region pack already on the live run paints without downloading;
+    // (2) network (mesh keeps the ?v=n_elem force-cache as tier 2 — the saved pack holds its OWN
+    // copy so HTTP-cache eviction can't strand a saved region); (3) the saved pack at ANY run,
+    // indexed on its own meta.hours axis. The cache paths land BEFORE the catch below, so a cache
+    // hit paints instead of erroring out of tiles[].
+    let mj=null, bytes=null, hoursMs=meshMan.hours, src="live";
+    const ix=lsIndex(), saved=(ix.regions||{})[key];
+    if(manSrc.mm==="live" && saved && saved.run===meshMan.run){
+      const meta=await ocGetJSON("region/"+key+".meta.json");
+      if(meta && meta.n_elem===rm.n_elem){
+        mj=await ocGetJSON("region/"+key+".mesh.json"); bytes=await ocGetBytes("region/"+key+".bin");
+        if(mj&&bytes) hoursMs=meta.hours; else { mj=null; bytes=null; }
+      }
+    }
+    if(!bytes && isOnline() && manSrc.mm==="live"){   // live-manifest guard: see loadOverviewOnce
+      try{
+        setStatus("Loading "+reg[0]+" mesh ("+rm.n_elem.toLocaleString()+" elements, ~"+(rm.n_elem*2*49/2.5e6).toFixed(1)+" MB)…");
+        const [mj2,vb]=await Promise.all([
+          // n_elem versions the URL: geometry changes (bbox edits) bust the force-cache automatically
+          fetch(R2+"/sscofs/"+rm.mesh+"?v="+rm.n_elem,{cache:"force-cache"}).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }),
+          netFetch(R2+"/sscofs/meshvel/"+rm.file,180000).then(r=>r.arrayBuffer())
+        ]);
+        mj=mj2; bytes=new Uint8Array(vb); hoursMs=meshMan.hours; src="live";
+        if(saved){ const wire=bytes;                    // write-through keeps the saved pack current
+          ocPut("region/"+key+".bin",wire)
+            .then(()=>ocPut("region/"+key+".mesh.json",JSON.stringify(mj),"application/json"))
+            .then(()=>ocPut("region/"+key+".meta.json",JSON.stringify({run:meshMan.run,hours:meshMan.hours,n_elem:rm.n_elem,name:reg[0],savedAt:Date.now()}),"application/json"))
+            .then(()=>ocPut("man/meshvel.json",JSON.stringify(meshMan),"application/json"))
+            .then(()=>{ const x=lsIndex(); if(x.regions&&x.regions[key]){ x.regions[key].run=meshMan.run; lsIndexSet(x); refreshOfflineUI(); } })
+            .catch(()=>{});
+        }
+      }catch(_){ mj=null; bytes=null; }
+    }
+    if(!bytes){                                          // offline or fetch failed: saved pack, any run
+      const meta=await ocGetJSON("region/"+key+".meta.json");
+      mj=meta && await ocGetJSON("region/"+key+".mesh.json");
+      bytes=meta && await ocGetBytes("region/"+key+".bin");
+      if(!meta || !mj || !bytes){
+        if(saved) noteEviction(reg[0]+" currents",x=>{ if(x.regions) delete x.regions[key]; });
+        const e=new Error("no saved copy");
+        e.userMsg=evictionNote||("Offline — no saved "+reg[0]+" currents pack (overview resolution shown). Connect once and save it here.");
+        throw e;
+      }
+      hoursMs=meta.hours; src="cache";
+      if(!adoptAxis(hoursMs)){ const e=new Error("no shared hours");
+        e.userMsg="Saved packs share no forecast hours — connect and re-save together."; throw e; }
+    }
+    const nodes=mj.nodes, tris=mj.tris, ne=tris.length;
+    t.ne=ne; t.span=ne; t.cx=new Float32Array(ne); t.cy=new Float32Array(ne);
+    t.hourOf=makeHourOf(hoursMs);                        // the pack's OWN axis (≠ live when cached)
+    for(let i=0;i<ne;i++){ const tr=tris[i];
+      t.cx[i]=(nodes[tr[0]][0]+nodes[tr[1]][0]+nodes[tr[2]][0])/3; t.cy[i]=(nodes[tr[0]][1]+nodes[tr[1]][1]+nodes[tr[2]][1])/3; }
+    if(bytes[0]===0x1f&&bytes[1]===0x8b) bytes=await gunzip(bytes);
+    if(bytes.length!==hoursMs.length*2*ne) throw new Error("meshvel is "+bytes.length+" B, expected "+(hoursMs.length*2*ne));
+    t.vel=bytes; t.spd=new Float32Array(ne); t.dir=new Float32Array(ne);
+    const earlier=REGIONS.slice(0,REGIONS.findIndex(r=>r[3]===key)).map(r=>r[4]);
+    if(earlier.length){ t.own=new Uint8Array(ne);
+      for(let i=0;i<ne;i++){ const lo=t.cx[i],la=t.cy[i];
+        t.own[i]=earlier.some(x=>lo>=x[0]&&lo<=x[2]&&la>=x[1]&&la<=x[3])?0:1; } }
+    buildMeshBuffers(t,nodes,tris);
+    t.ready=true; render(); setStatus(loadedSummary());
+  }catch(e){ delete tiles[key]; setStatus(e.userMsg||("Failed to load "+key+": "+e.message),true); }
+}
+let overviewLoading=null;
+const loadOverview=()=>overviewLoading||(overviewLoading=loadOverviewOnce());
+async function loadOverviewOnce(){
+  // Live-first with saved-pack fallback (offline step 4). Order: (1) a saved copy already on the
+  // live run paints without the download; (2) network; (3) the saved pack from ITS paired manifest
+  // (own hour axis via adoptAxis — never the live axis). Write-through keeps a saved pack current.
+  let bytes=null, fman=fieldMan, src="live";
+  const ix=lsIndex();
+  if(manSrc.fm==="live" && ix.base && ix.base.runCur===fieldMan.run)
+    bytes=await ocGetBytes("bin/field");                       // saved copy IS the latest run
+  // Network path ONLY when the manifest is live too: a live bin indexed on a cached (older-run)
+  // manifest's axis could misalign silently — the pack fallback below is always coherent.
+  if(!bytes && isOnline() && manSrc.fm==="live"){
+    try{
+      setStatus("Loading whole-coast current overview (~1.7 MB)…");
+      const wire=new Uint8Array(await (await netFetch(R2+"/sscofs/field/overview.bin",180000)).arrayBuffer());
+      bytes=wire;
+      if(ix.base) ocPut("bin/field",wire)                      // write-through (wire body, pre-gunzip)
+        .then(()=>ocPut("man/field.json",JSON.stringify(fieldMan),"application/json"))
+        .then(()=>{ const x=lsIndex(); if(x.base){ x.base.runCur=fieldMan.run; lsIndexSet(x); refreshOfflineUI(); } })
+        .catch(()=>{});
+    }catch(_){ bytes=null; }
+  }
+  if(!bytes){                                                  // offline or fetch failed: saved pack
+    const pm=await ocGetJSON("man/field.json"); bytes=await ocGetBytes("bin/field");
+    if(!pm || !bytes){
+      if(ix.base) noteEviction("current overview",x=>{ delete x.base; });
+      throw new Error(evictionNote||"offline — no saved base pack. Connect once and tap “⬇ Save offline”.");
+    }
+    fman=pm; src="cache"; RUN_CUR=fman.run;
+    if(!adoptAxis(fman.hours)) throw new Error("saved packs share no forecast hours");
+  }
+  const ov=fman.regions.overview, cols=ov.cols, rows=ov.rows;
+  const span=cols*rows, nh=fman.hours.length;
+  if(bytes[0]===0x1f&&bytes[1]===0x8b) bytes=await gunzip(bytes);
+  if(bytes.length!==nh*2*span) throw new Error(`current overview is ${bytes.length} B, expected ${nh*2*span}`);
+  const water=new Uint8Array(span);                     // water = valid in ANY hour (wet/dry cells)
+  for(let h=0;h<nh;h++){ const off=h*2*span; for(let i=0;i<span;i++) if(bytes[off+i]!==255) water[i]=1; }
+  const lut=[]; for(let i=0;i<span;i++) if(water[i]) lut.push(i);
+  const ne=lut.length;
+  const t={key:"overview",bbox:ov.bbox,vpe:6,ready:false,decodedHour:-1,ne,span,spdScale:0.1,
+           lut:Uint32Array.from(lut),vel:bytes,
+           cx:new Float32Array(ne),cy:new Float32Array(ne),
+           spd:new Float32Array(ne),dir:new Float32Array(ne),spd3:new Float32Array(ne*6)};
+  t.hourOf=makeHourOf(fman.hours);        // the PAIRED manifest's axis (≠ live when src==="cache")
+  t.man=fman;                             // loadSteepOnce reads grid dims from the tile's OWN manifest
+  buildFieldQuads(t,cols,rows,lut);
+  dataSrc.cur=src;
+  t.ready=true; overview=t; render(); setStatus(loadedSummary()); updateStale();
+}
+let windLoading=null;
+const loadWind=()=>windLoading||(windLoading=loadWindOnce());   // 3.4 MB: never fetch it twice
+async function loadWindOnce(){
+  // Same live-first / saved-fallback / write-through shape as loadOverviewOnce (offline step 4).
+  let bytes=null, wman=windMan, src="live";
+  const ix=lsIndex();
+  if(manSrc.wm==="live" && ix.base && windMan && ix.base.runWind===windMan.run)
+    bytes=await ocGetBytes("bin/wind");                        // saved copy IS the latest run
+  // Live-manifest guard: same coherence rule as loadOverviewOnce.
+  if(!bytes && isOnline() && manSrc.wm==="live"){
+    try{
+      setStatus("Loading HRDPS wind overview (~3.4 MB)…");
+      const wire=new Uint8Array(await (await netFetch(R2+"/hrdps/overview.bin",180000)).arrayBuffer());
+      bytes=wire;
+      if(ix.base) ocPut("bin/wind",wire)                       // write-through (wire body, pre-gunzip)
+        .then(()=>ocPut("man/hrdps.json",JSON.stringify(windMan),"application/json"))
+        .then(()=>{ const x=lsIndex(); if(x.base){ x.base.runWind=windMan.run; lsIndexSet(x); refreshOfflineUI(); } })
+        .catch(()=>{});
+    }catch(_){ bytes=null; }
+  }
+  if(!bytes){                                                  // offline or fetch failed: saved pack
+    const pm=await ocGetJSON("man/hrdps.json"); bytes=await ocGetBytes("bin/wind");
+    if(!pm || !bytes){
+      if(ix.base) noteEviction("wind overview",x=>{ delete x.base; });
+      throw new Error(evictionNote||"offline — no saved base pack. Connect once and tap “⬇ Save offline”.");
+    }
+    wman=pm; src="cache"; RUN_WIND=wman.run;
+    if(!adoptAxis(wman.hours.map(isoToMs))) throw new Error("saved packs share no forecast hours");
+  }
+  const ov=wman.regions.overview;
+  if(!ov) throw new Error("no 'overview' region in the HRDPS manifest — run hrdps-ingest first");
+  if(bytes[0]===0x1f&&bytes[1]===0x8b) bytes=await gunzip(bytes);
+  const cols=ov.cols, rows=ov.rows, span=cols*rows, nh=wman.hours.length;
+  if(bytes.length!==nh*2*span) throw new Error(`wind tile is ${bytes.length} B, expected ${nh*2*span}`);
+  const ne=span;                                  // HRDPS covers land too: every cell is a quad
+  const t={key:"wind",bbox:ov.bbox,vpe:6,ready:false,decodedHour:-1,ne,span,spdScale:1,
+           vel:bytes,cx:new Float32Array(ne),cy:new Float32Array(ne),
+           spd:new Float32Array(ne),dir:new Float32Array(ne),spd3:new Float32Array(ne*6)};
+  t.hourOf=makeHourOf(wman.hours.map(isoToMs));   // the PAIRED manifest's axis
+  t.man=wman;                                     // loadSteepOnce reads grid dims from the tile's OWN manifest
+  buildFieldQuads(t,cols,rows,null);
+  dataSrc.wind=src;
+  t.ready=true; windTile=t; render(); setStatus(loadedSummary()); updateStale();
+}
+let steepTile=null, steepLoading=null;
+const loadSteep=()=>steepLoading||(steepLoading=loadSteepOnce());
+async function loadSteepOnce(){
+  // Derived: no fetch of its own. Needs BOTH fields resident (current field + wind field), built on
+  // the CURRENT overview grid at all zooms (a hazard advisory doesn't need mesh resolution), reduced
+  // to the protected-water cells so nothing draws outside the zones where the estimate is valid.
+  await Promise.all([loadOverview(), loadWind()]);
+  // Dims/bbox come from the manifests the tiles were actually BUILT from (t.man) — with offline
+  // packs those can be a saved run, not the live manifests (offline step 4).
+  const oc=overview.man.regions.overview, cols=oc.cols, rows=oc.rows;
+  const [oW,oS,oE,oN]=oc.bbox, oStepLon=(oE-oW)/(cols-1), oStepLat=(oN-oS)/(rows-1);
+  // steepness cells = overview water cells that lie in a protected zone
+  const cells=[]; for(let m=0;m<overview.ne;m++){ if(inSteepZone(overview.cx[m],overview.cy[m])) cells.push(m); }
+  const ne=cells.length;
+  // Directional fetch: for each cell and each of 16 sectors, march upwind (toward the sector
+  // bearing) across the water mask until land or the 60 km cap. Leaving the grid over water also
+  // caps: the extent edges inside zones are all long-fetch water, never a wall.
+  setStatus("Computing directional fetch ("+ne.toLocaleString()+" cells × "+FETCH_SECTORS+" sectors)…");
+  const span=cols*rows, mask=new Uint8Array(span);
+  for(let i=0;i<overview.ne;i++) mask[overview.lut[i]]=1;
+  const stepKm=oStepLat*111.32, maxSteps=Math.ceil(FETCH_CAP_KM/stepKm);
+  const fetchKm=new Float32Array(ne*FETCH_SECTORS);
+  for(let s=0;s<FETCH_SECTORS;s++){
+    const b=s*2*Math.PI/FETCH_SECTORS, dN=Math.cos(b), dE=Math.sin(b);
+    for(let m=0;m<ne;m++){
+      const oi=cells[m];
+      let la=overview.cy[oi], lo=overview.cx[oi], f=FETCH_CAP_KM;
+      for(let k2=1;k2<=maxSteps;k2++){
+        la+=dN*oStepLat; lo+=dE*oStepLat/Math.cos(la*Math.PI/180);
+        const rr=Math.round((oN-la)/oStepLat), cc=Math.round((lo-oW)/oStepLon);
+        if(rr<0||rr>=rows||cc<0||cc>=cols) break;               // off-grid over water → cap
+        if(!mask[rr*cols+cc]){ f=k2*stepKm; break; }            // hit land
+      }
+      fetchKm[m*FETCH_SECTORS+s]=f;
+    }
+  }
+  const t={key:"steep",bbox:oc.bbox,vpe:6,ready:false,decodedHour:-1,ne,
+           cx:new Float32Array(ne),cy:new Float32Array(ne),
+           spd:new Float32Array(ne),dir:new Float32Array(ne),spd3:new Float32Array(ne*6),
+           band:new Float32Array(ne),
+           // per-cell inputs kept for the hover readout (filled each hour in decodeSteep)
+           wKt:new Float32Array(ne),wFrom:new Float32Array(ne),Hs:new Float32Array(ne),
+           Tp:new Float32Array(ne),fUse:new Float32Array(ne)};
+  t.hourOf=h=>h;                        // decode depends on BOTH datasets; cache on the master hour
+  // Per steepness cell precompute: its index into the current overview water array (curCell) and its
+  // nearest wind-grid linear index (windCell). Cheap per-hour decode then just reads + runs steepCell.
+  const wc=windTile.man.regions.overview, wCols=wc.cols, wRows=wc.rows;
+  const [wW,wS,wE,wN]=wc.bbox, wStepLon=(wE-wW)/(wCols-1), wStepLat=(wN-wS)/(wRows-1);
+  const curCell=new Int32Array(ne), windCell=new Int32Array(ne);
+  // Build the quad geometry directly over the selected cells (row/col from the current grid index).
+  t.ref=tileOrigin(t.bbox);
+  // Same grid as the current overview (cells are a water subset of it), so drawArrows can stride on it.
+  t.gcols=cols; t.grows=rows; t.glut=new Int32Array(ne);
+  const pos=new Float32Array(ne*6*2); let k=0;
+  for(let m=0;m<ne;m++){ const oi=cells[m];
+    const lo=overview.cx[oi], la=overview.cy[oi]; t.cx[m]=lo; t.cy[m]=la;
+    curCell[m]=oi; t.glut[m]=overview.lut[oi];
+    let wj=Math.round((lo-wW)/wStepLon), wi=Math.round((wN-la)/wStepLat);
+    wj=Math.min(Math.max(wj,0),wCols-1); wi=Math.min(Math.max(wi,0),wRows-1);
+    windCell[m]=wi*wCols+wj;
+    const p1=CRS.latLngToPoint(L.latLng(la+oStepLat/2,lo-oStepLon/2),Z0);
+    const p2=CRS.latLngToPoint(L.latLng(la-oStepLat/2,lo+oStepLon/2),Z0);
+    const x1=p1.x-t.ref.x,y1=p1.y-t.ref.y,x2=p2.x-t.ref.x,y2=p2.y-t.ref.y;
+    pos[k++]=x1;pos[k++]=y1; pos[k++]=x2;pos[k++]=y1; pos[k++]=x2;pos[k++]=y2;
+    pos[k++]=x1;pos[k++]=y1; pos[k++]=x2;pos[k++]=y2; pos[k++]=x1;pos[k++]=y2; }
+  t.posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,t.posBuf); gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
+  t.spdBuf=gl.createBuffer();
+  const cSpan=cols*rows, wSpan=wCols*wRows;
+  const SEC_STEP=360/FETCH_SECTORS;
+  // Fetch at an arbitrary bearing: HARMONIC interpolation (in 1/fetch) between the two adjacent
+  // ray-marched sectors. Fetch behaves like min(L/cosΔ, w/sinΔ) near a channel kink, and linear
+  // interpolation overshoots it badly (11 km where truth is 7.3 in the 47×5 test channel); harmonic
+  // tracks the 1/sin structure and restored head-on/oblique band parity with the explorer.
+  const fetchAt=(fbase,beta)=>{ const p=(((beta/SEC_STEP)%FETCH_SECTORS)+FETCH_SECTORS)%FETCH_SECTORS;
+    const s0=p|0, s1=(s0+1)%FETCH_SECTORS, fr=p-s0;
+    return 1/((1-fr)/fetchKm[fbase+s0]+fr/fetchKm[fbase+s1]); };
+  t.decodeSteep=()=>{
+    const ci=overview.hourOf(hour), wi=windTile.hourOf(hour);      // each dataset's own hour index
+    const cS=ci*2*cSpan, wSb=wi*2*wSpan;
+    const cv=overview.vel, wv=windTile.vel;
+    for(let m=0;m<ne;m++){
+      const gi=overview.lut[curCell[m]], wcell=windCell[m];
+      const cByte=cv[cS+gi];
+      if(cByte===255){ t.band[m]=-1; t.spd[m]=NaN; t.wKt[m]=NaN; setQuad(t.spd3,m,DRY); continue; }
+      const curKt=cByte/10, curToward=cv[cS+cSpan+gi]*360/255;
+      const wByte=wv[wSb+wcell];                                    // wind covers land: never 255 here
+      const U=wByte/3.6, dirFrom=wv[wSb+wSpan+wcell]*360/255;        // km/h → m/s, FROM
+      // Directional-component fan = the MODULE's steepCell (±80°/5°, worst band over components,
+      // largest-Tp system = display — Donelan). This cell's ray-marched 16-sector fetch table goes
+      // in as the fetch PROVIDER (harmonic fetchAt above); spec model only — the map has no model
+      // toggles. (The old inline fan's Ueff<0.5 cutoff vs the module's 0.3 is provably inert:
+      // windSea returns Hs=0 below 0.5 m/s, filtered by the module's own Hs>0.05 check.)
+      const fbase=m*FETCH_SECTORS;
+      const sc=steepCell(U, dirFrom, curKt, curToward, beta=>fetchAt(fbase,beta), "spec");
+      t.spd[m]=curKt; t.dir[m]=curToward;                          // arrows show current SET
+      t.wKt[m]=wByte/1.852; t.wFrom[m]=dirFrom;
+      t.Hs[m]=sc.dom.Hs; t.Tp[m]=sc.dom.Tp; t.fUse[m]=sc.dom.Fkm; // hover shows the dominant sea
+      t.band[m]=sc.band;
+      setQuad(t.spd3,m, sc.band<1.5?DRY:sc.band);                  // bands ≤1 discarded (threshold-only)
+    }
+    if(steepStyle==="course"){ t.buildQuarter(); t.shadeCourse(); t.arrowGate=t.cband; } // Q-bands overwrite spd3
+    else t.arrowGate=t.band;
+  };
+  /* ---- Quartering-sea (course) display ------------------------------------------------------
+     Each cell shaded by the directional hazard Q for a paddler steering `course`, via physics.js's
+     quarterHaz over the SAME ±80°/10° wind-sea fan the steepness layer fans (10° step: q is smoother
+     than the band, so the 5° steepness step isn't needed — see task_quartering_display_port). Cutlines
+     = physics.js qBand (v0.4, DECIDED 2026-07-17). compEnv (the per-component running-max envelope over
+     opposing current) dominates the cost and is COURSE-INDEPENDENT, so it is built once per decoded hour
+     (t.qHour) and course scrubbing is a cheap re-band. Measured on this view: ~1.2 s to build 6,196
+     cells' envelopes, ~6 ms to re-shade a new course. */
+  t.qHour=-1; t.qComps=null; t.qm=new Float32Array(ne); t.cband=new Float32Array(ne);
+  t.buildQuarter=()=>{                   // per-cell comps + spread multiplier for the decoded hour
+    if(t.qHour===t.decodedHour && t.qComps) return;
+    setStatus("Computing course hazard ("+ne.toLocaleString()+" cells)…");
+    const comps=new Array(ne);
+    for(let m=0;m<ne;m++){
+      if(t.wKt[m]!==t.wKt[m]){ comps[m]=null; continue; }         // dry cell
+      const U=t.wKt[m]*KT, dirFrom=t.wFrom[m], curKt=t.spd[m], curTo=t.dir[m], fb=m*FETCH_SECTORS;
+      const cs=[];
+      for(let d=-80; d<=80; d+=10){ const Ums=U*Math.cos(d*Math.PI/180); if(Ums<0.3) continue;
+        const from=((dirFrom+d)%360+360)%360, w=windSea(Ums, fetchAt(fb,from)*1000);
+        if(!(w.Hs>0.05)) continue;
+        cs.push({from,d,Hs:w.Hs,Tp:w.Tp,Uw:t.wKt[m],h:hazard(w.Hs,w.Tp,from,curKt,curTo,"spec")}); }
+      if(!cs.length){ const w=windSea(U, fetchAt(fb,dirFrom)*1000);
+        cs.push({from:dirFrom,d:0,Hs:w.Hs,Tp:w.Tp,Uw:t.wKt[m],h:hazard(w.Hs,w.Tp,dirFrom,curKt,curTo,"spec")}); }
+      comps[m]=cs; t.qm[m]=qMult(confusedSpread(cs));
+    }
+    t.qComps=comps; t.qHour=t.decodedHour;
+    setStatus(loadedSummary());
+  };
+  // Q for one cell on an arbitrary heading, reusing the cached per-component envelope (quarterHaz
+  // memoizes c._env on the comp objects — valid because current+model are fixed for the hour's set).
+  t.qAt=(m,hdg)=>{ const cs=t.qComps&&t.qComps[m]; if(!cs) return NaN;
+    return Math.min(1, quarterHaz(cs,hdg,t.spd[m],t.dir[m],"spec").Q * t.qm[m]); };
+  t.qGov=(m,hdg)=>{ const cs=t.qComps&&t.qComps[m]; if(!cs) return null;
+    return quarterHaz(cs,hdg,t.spd[m],t.dir[m],"spec").gov; };
+  t.shadeCourse=()=>{                    // write course-Q bands into cband + the GL buffer (spd3)
+    for(let m=0;m<ne;m++){ const cs=t.qComps&&t.qComps[m];
+      if(!cs){ t.cband[m]=-1; setQuad(t.spd3,m,DRY); continue; }
+      const b=qBand(t.qAt(m,course)); t.cband[m]=b;
+      setQuad(t.spd3,m, b<1.5?DRY:b); }                            // bands ≤1 discarded, matching "fill"
+  };
+  t.arrowGate=t.band;                    // draw arrows only where the water is actually shaded (band≥2)
+  t.fetchKm=fetchKm;                     // kept for hover readout / verification
+  t.ready=true; steepTile=t; render(); setStatus(loadedSummary());
+}
+function setQuad(a,m,v){ const b=m*6; a[b]=v;a[b+1]=v;a[b+2]=v;a[b+3]=v;a[b+4]=v;a[b+5]=v; }
+function updateTiles(){
+  if(!meshMan || !MODES[mode].mesh) return;
+  if(map.getZoom()>=MESH_ZOOM){
+    const b=map.getBounds();
+    for(const r of REGIONS) if(isect(b,r[4])) ensureTile(r[3]);
+  }
+}
+function setStatus(m,err){ const e=$("status"); e.textContent=m; e.className="status"+(err?" err":""); }
+
+// Beaufort colour chips at a given fill alpha — force number + wind range only, no descriptor, to keep the Key compact.
+function beaufortKey(alpha){
+  let s="";
+  for(let f=0;f<=9;f++){
+    const ktl = f===0 ? "calm" : `${kt(W_EDGES[f-1])}${f<W_EDGES.length?"–"+kt(W_EDGES[f]-1):"+"} kt`;
+    s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[f],GRAY_LAND,alpha)}"></i>F${f} · ${ktl}</span>`;
+  }
+  s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[10],GRAY_LAND,alpha)}"></i>F10+</span>`;
+  return s;
+}
+function buildLegend(){
+  const md=MODES[mode]; let s;
+  if(mode==="current"){
+    s=`<span class="lchip" style="font-weight:600"><a href="${SSCOFS_URL}" target="_blank" rel="noopener" style="color:inherit">Current speed (kt)</a>:</span>`;
+    for(let f=0;f<CUR_COL.length;f++){
+      // Swatch = the colour as it actually appears on the water (blended at the fill alpha).
+      const sw = f===0 ? BASE_WATER : blend(CUR_COL[f],BASE_WATER,md.alpha);
+      const lbl = f===0 ? CUR_LBL[f]+" <span style='opacity:.6'>(unshaded)</span>" : CUR_LBL[f];
+      s+=`<span class="lchip"><i class="lsw" style="background:${sw}"></i>${lbl}</span>`; }
+  } else if(mode==="wind"){
+    s=`<span class="lchip" style="font-weight:600"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(md.alpha);
+  } else if(steepStyle==="rings"){
+    // rings drawn as an open circle (coloured border); fill behind = wind (Beaufort)
+    s='<span class="lchip" style="font-weight:600">Roughness rings · fill = wind:</span>';
+    for(let bnd=1;bnd<=4;bnd++)
+      s+=`<span class="lchip"><i class="lsw" style="border:3px solid ${RING[bnd].col};background:transparent;border-radius:50%"></i>${RING_LBL[bnd]}</span>`;
+    s+=`<span class="lchip"><i class="lsw" style="border-radius:50%;background:#00b4d8;border-color:#023047"></i>current set (arrow)</span>`;
+    // With wind arrows on, decode the fill's wind-speed colours inline (Beaufort key at the fill alpha)
+    if($("windArrows").checked)
+      s+=`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(getAlpha());
+    else
+      s+=`<span class="lchip" style="opacity:.6">coloured fill = wind (Beaufort — see Wind layer)</span>`;
+  } else if(steepStyle==="course"){
+    const nm=COMPASS[Math.round(((course%360)+360)%360/22.5)%16];
+    s=`<span class="lchip" style="font-weight:600">Quartering-sea risk steering ${nm} (${Math.round(snap16(course))}°):</span>`;
+    for(let i=0;i<STEEP_COL.length;i++)
+      s+=`<span class="lchip" title="${STEEP_SUB[i]}"><i class="lsw" style="background:${blend(STEEP_COL[i],GRAY_LAND,md.alpha)}"></i>${STEEP_LBL[i]}</span>`;
+    s+=`<span class="lchip" style="opacity:.6">roughness for a paddler on this heading · calm / head / following-only seas: unshaded</span>`;
+  } else {
+    s='<span class="lchip" style="font-weight:600" title="Probability of increasing roughness from opposing wind/current or quartering seas">Probability of increasing roughness (protected waters):</span>';
+    for(let i=0;i<STEEP_COL.length;i++)
+      s+=`<span class="lchip" title="${STEEP_SUB[i]}"><i class="lsw" style="background:${blend(STEEP_COL[i],GRAY_LAND,md.alpha)}"></i>${STEEP_LBL[i]}</span>`;
+    s+=`<span class="lchip" style="opacity:.6">calm / following seas: unshaded</span>`;
+  }
+  $("legend").innerHTML=s;
+}
+const NOTES={
+  current:"Covers Puget Sound → Queen Charlotte Sound (south edge — <b>Haida Gwaii is outside SSCOFS</b>). Zoomed out: whole-coast ~2 km overview; zoom in (≥ z10): native FVCOM mesh tiles (~40–90 m in narrows) load automatically for the water in view. Arrows show <b>set</b> (where the water goes). SSCOFS is a model — official CHS/NOAA predictions remain authoritative at the tightest narrows.",
+  wind:"HRDPS 2.5 km whole-extent field, one resolution at every zoom (there is no finer wind tile). Arrows point <b>downwind</b> (the model stores the direction the wind blows <i>from</i>). Wind is drawn over land as well as water; place names and coastline are drawn on top. Beaufort bins match the standalone wind map exactly.",
+  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. <b>Rings on wind</b> shows the full HRDPS wind field with a roughness ring + cyan current arrow wherever the current is steepening the sea; <b>Shaded cells</b> paints the bands over a plain coastline (switch with <b>Steep display</b>). Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
+};
+function buildBaseSelect(){
+  const md=MODES[mode], sel=$("base");
+  // wind & steepness lead with the marine/coastline bases; currents lead with USGS topo.
+  let order = (md.base==="gray"||md.base==="ocean") ? ["ocean","gray","topo","imagery"] : ["usgs","ocean","topo","imagery"];
+  const cur = basePref[mode]||md.base;
+  if(!order.includes(cur)) order=[cur,...order];   // an explicit ?base= (or pinned) choice is always selectable
+  sel.innerHTML="";
+  for(const k of order){ const o=document.createElement("option"); o.value=k; o.textContent=BASES[k].name;
+    if(k===cur) o.selected=true; sel.appendChild(o); }
+}
+const basePref={};                        // remember the user's base choice per mode
+/* Fill opacity. MODES[mode].alpha is the ONE source of truth: applyModeGL() pushes it to the shader
+   as uAlpha, and buildLegend() blends every swatch over the base at the same alpha. Moving the
+   slider therefore keeps the key honest by construction — a swatch always shows the colour as it
+   actually lands on the map. Only the swatch background is tinted; chip text stays fully opaque.
+   The setting is per mode (currents 0.85, wind 0.72), so flipping layers restores each one's. */
+function syncOpacityUI(){
+  const a=getAlpha();
+  $("opacity").value=a; $("opacityVal").textContent=Math.round(a*100)+"%";
+}
+const clampAlpha=a=>Math.min(1,Math.max(0,a));   // 0 = fill fully off (arrows/mesh only)
+function setAlpha(a){
+  setActiveAlpha(a);                        // steep+rings: adjusts the wind-fill opacity behind the rings
+  syncOpacityUI(); applyModeGL(); buildLegend(); render(); updateURL();
+}
+// applyMode() re-skins everything from the current `mode`; setMode() is the guarded entry point.
+const snap16=d=>Math.round(((d%360)+360)%360/22.5)%16*22.5;   // nearest of the 16 compass points, in degrees
+function updateSteepControls(){
+  $("steepStyleFld").style.display = mode==="steep" ? "" : "none";
+  $("windArrowsFld").style.display = (mode==="steep"&&steepStyle==="rings") ? "" : "none";
+  $("courseFld").style.display = (mode==="steep"&&steepStyle==="course") ? "" : "none";
+  $("steepStyle").value=steepStyle;
+  $("course").value = String(snap16(course));
+  updateCourseArrow();
+}
+// Points the course-steer arrow (next to the Course select) at the compass heading itself: the
+// glyph is drawn pointing up (north, 0deg) so a plain CSS rotate by the bearing (both clockwise) lines it up.
+function updateCourseArrow(){ $("courseArrow").style.transform=`rotate(${snap16(course)}deg)`; }
+function applyMode(){
+  $("mode").value=mode;
+  updateSteepControls();
+  applyModeGL(); syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value);
+  $("note").innerHTML=NOTES[mode];
+  // Every tile re-decodes: hour indices differ per dataset, and the cached hour is now stale.
+  for(const t of [overview,windTile,steepTile,...Object.values(tiles)]) if(t) t.decodedHour=-1;
+  ensureLayer(); updateTiles(); render(); updateURL();
+  updateStale();                            // the banner shows different clocks per layer
+  hideTip();                                // the readout's shape + pointed cell differ across layers
+}
+// Each mode's whole-extent layer is fetched on first use and cached: a wind bookmark never pays the
+// 1.7 MB currents overview, and a currents session never pays the 3.4 MB wind tile.
+function ensureLayer(){
+  if(!meshMan) return;                                   // manifests not in yet; boot() will call us
+  // Steepness needs BOTH fields; loadSteep awaits them. Wind and currents each need only their own.
+  const pending = mode==="steep" ? (steepTile?null:loadSteep)
+                : mode==="wind"  ? (windTile?null:loadWind)
+                :                  (overview?null:loadOverview);
+  if(pending) return pending().catch(e=>setStatus(MODES[mode].label+" layer failed: "+e.message,true));
+  setStatus(loadedSummary());
+}
+function setSteepStyle(v){
+  if(v===steepStyle || (v!=="rings"&&v!=="fill"&&v!=="course")) return;
+  steepStyle=v;
+  if(steepTile) steepTile.decodedHour=-1;   // spd3 holds different bands per display → force a re-decode
+  updateSteepControls();
+  applyModeGL(); syncOpacityUI(); buildLegend(); render(); updateURL();
+  refreshTip();                             // rings/shaded/course readouts differ — refresh in place
+}
+// Course change: the envelope layer (t.buildQuarter) is course-independent and already built for the
+// hour, so this is just a cheap re-band (shadeCourse) + GL re-upload — no envelope recompute.
+function setCourse(deg){
+  course=((+deg%360)+360)%360;
+  if(mode==="steep"&&steepStyle==="course"&&steepTile&&steepTile.ready){
+    decodeTile(steepTile);                  // no-op if the hour is already decoded (buildQuarter cached)
+    steepTile.shadeCourse();
+    if(gl){ gl.bindBuffer(gl.ARRAY_BUFFER,steepTile.spdBuf); gl.bufferData(gl.ARRAY_BUFFER,steepTile.spd3,gl.DYNAMIC_DRAW); }
+    render();
+  }
+  buildLegend(); updateURL(); refreshTip();   // heading changed → update Q-rose + governing-sea lines
+  updateCourseArrow();
+}
+function setMode(next){
+  if(!MODES[next] || next===mode || (next==="steep"&&!STEEP_ON) || ((next==="wind"||next==="steep")&&windDisabled)) return;
+  mode=next; applyMode();
+}
+function setHour(x){
+  hour=Math.max(0,Math.min(TIMES.length-1,x)); $("time").value=hour;
+  $("timeLabel").textContent=TIMES.length?PTL.format(new Date(TIMES[hour]))+" (+"+hour+"h)":"";
+  render(); updateURL(); refreshTip();      // scrubbed to a new hour → refresh a pinned readout in place
+}
+
+/* ---------- bookmarkable view: ?mode=&lat=&lon=&z=&h= ---------- */
+let urlTimer=null;
+function updateURL(){
+  clearTimeout(urlTimer);
+  urlTimer=setTimeout(()=>{
+    const c=map.getCenter();
+    // `a` is the ACTIVE mode's fill opacity: each mode keeps its own, and a link only ever restores
+    // the one it was shared in. The other modes fall back to their defaults.
+    const p={mode,lat:c.lat.toFixed(4),lon:c.lng.toFixed(4),z:map.getZoom(),h:hour,a:getAlpha().toFixed(2)};
+    // carry the base only when it isn't the mode's default, so existing default links stay unchanged
+    const bcur=basePref[mode]||MODES[mode].base; if(bcur!==MODES[mode].base) p.base=bcur;
+    if(mode==="steep"){ p.st=steepStyle;        // remember the display so a shared steep link restores it
+      if(steepStyle==="course") p.course=Math.round(course); }  // ...and the heading, for a course link
+    history.replaceState(null,"","?"+new URLSearchParams(p));
+  },250);
+}
+// The mode is applied from the URL BEFORE the map is set up (see the init block), not here: setView
+// fires moveend -> updateTiles, so a still-"current" mode would download every mesh tile in view
+// before the wind layer even appeared.
+function applyURL(){
+  // reads the script-time URL_VIEW capture, NOT location.search: by the time boot()'s manifests
+  // land, updateURL() has usually rewritten the query string already (see URL_VIEW).
+  const v=URL_VIEW.view;
+  if(v) map.setView([v.lat,v.lon],Math.max(v.z,map.getMinZoom()));
+  return URL_VIEW.h;
+}
+map.on("moveend zoomend",()=>{ updateTiles(); updateURL(); refreshOfflineUI(); });   // the save button tracks the region under the centre
+
+// Region select = navigation shortcut; tile loading is automatic from the viewport.
+{ const o=document.createElement("option"); o.value=-1; o.textContent="Full coast (overview)"; $("region").appendChild(o); }
+REGIONS.forEach((r,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=r[0]; $("region").appendChild(o); });
+$("region").onchange=e=>{ hideTip(); const i=+e.target.value;   // jumping regions no longer auto-hides via movestart
+  if(i<0) map.fitBounds(FULL_EXTENT);
+  else { const r=REGIONS[i]; map.setView(r[1], MODES[mode].mesh ? Math.max(r[2],MESH_ZOOM) : r[2]); } };
+// 16-point course control (wet-finger: one tap per compass point, 22.5° resolution; a ?course= link
+// can still carry any heading, snapped to the nearest point for display).
+COMPASS.forEach((name,i)=>{ const o=document.createElement("option");
+  o.value=i*22.5; o.textContent=`${name} · ${Math.round(i*22.5)}°`; $("course").appendChild(o); });
+$("mode").onchange=e=>setMode(e.target.value);
+$("steepStyle").onchange=e=>setSteepStyle(e.target.value);
+$("course").onchange=e=>setCourse(+e.target.value);
+$("windArrows").onchange=()=>{ buildLegend(); render(); };   // legend gains the Beaufort key when on
+$("base").onchange=e=>{ basePref[mode]=e.target.value; setBase(e.target.value); updateURL(); };
+$("arrows").onchange=()=>{ rememberTp(); syncArrowsTgl(); render(); };
+$("opacity").oninput=e=>setAlpha(+e.target.value);
+/* phone ± buttons: 5-point nudges, clamped to the same 0–1 range as the slider. toFixed(2) keeps
+   the value on the 0.01 step grid so the thumb never lands between steps and jumps on the next drag. */
+const nudgeAlpha=d=>setAlpha(clampAlpha(+(getAlpha()+d).toFixed(2)));
+$("opDown").onclick=()=>nudgeAlpha(-0.05);
+$("opUp").onclick=()=>nudgeAlpha(0.05);
+/* Phone arrows on/off. The Arrows density select is hidden on the phone, so this button IS the
+   arrows control there: it flips #arrows between "0" (Off) and the last density that was in use,
+   then goes through the same render path. Desktop keeps the dropdown (its Off option is this). */
+let lastArrowTp=+$("arrows").value>0?$("arrows").value:"12";
+const rememberTp=()=>{ if(+$("arrows").value>0) lastArrowTp=$("arrows").value; };
+function syncArrowsTgl(){
+  const on=+$("arrows").value>0, b=$("arrowsTgl");
+  b.setAttribute("aria-pressed",on?"true":"false");
+  b.textContent=on?"➤ On":"➤ Off";
+  b.title=on?"Turn the arrows off":"Turn the arrows on";
+  b.setAttribute("aria-label",b.title);
+}
+$("arrowsTgl").onclick=()=>{ const s=$("arrows"); rememberTp(); s.value=+s.value>0?"0":lastArrowTp; syncArrowsTgl(); render(); };
+$("time").oninput=e=>setHour(+e.target.value);
+$("playBtn").onclick=()=>{ if(anim){clearInterval(anim);anim=null;$("playBtn").textContent="▶";} else {$("playBtn").textContent="⏸";anim=setInterval(()=>setHour(hour>=TIMES.length-1?0:hour+1),400);} };
+// Phone hour-steppers (setHour clamps to [0, TIMES.length-1]); stop any animation first in
+// case the viewport crossed the breakpoint mid-play.
+const stepHour=d=>{ if(anim){clearInterval(anim);anim=null;$("playBtn").textContent="▶";} setHour(hour+d); };
+$("stepBack").onclick=()=>stepHour(-1);
+$("stepFwd").onclick=()=>stepHour(1);
+$("saveBtn").onclick=saveOffline; $("refreshBtn").onclick=refreshNow;
+refreshOfflineUI();
+
+// Adopt ?mode= before the first base map / GL uniforms / tile pass, so a wind bookmark never pays
+// for the currents stack on the way in. A stale mode is corrected in boot() once manifests land.
+if(!STEEP_ON){ const o=$("mode").querySelector('option[value="steep"]'); o.disabled=true; o.hidden=true; }
+{ const q=new URLSearchParams(location.search), m=q.get("mode");
+  if(m && MODES[m] && !(m==="steep"&&!STEEP_ON)) mode=m;
+  const st=q.get("st"); if(st==="rings"||st==="fill"||st==="course") steepStyle=st;   // before applyMode/alphaRef
+  const co=parseFloat(q.get("course")); if(isFinite(co)) course=((co%360)+360)%360;
+  $("mode").value=mode;
+  const a=parseFloat(q.get("a"));                  // applies to the URL's mode+display (see updateURL)
+  if(isFinite(a)) setActiveAlpha(a); }
+updateSteepControls();
+// Phone: the Base map + Arrows controls are hidden (media block) — pin their values instead:
+// Esri terrain for every layer, densest arrow spacing (David's picks, 2026-07-22).
+if(matchMedia("(max-width:640px)").matches){
+  basePref.current=basePref.wind=basePref.steep="topo"; $("arrows").value="12";
+  // Phone: shorter Layer option text (Steep display menu is hidden — the compact "beta" note
+  // stands in for it). Desktop keeps the fuller labels.
+  const modeSel=$("mode");
+  modeSel.querySelector('option[value="current"]').textContent="Currents";
+  modeSel.querySelector('option[value="wind"]').textContent="Wind";
+  modeSel.querySelector('option[value="steep"]').textContent="Roughness (beta)";
+}
+// ?base= overrides the default/pinned base for the URL's mode. Read AFTER the phone pin so it wins on
+// phone too, where the Base dropdown is hidden — lets a phone compare bases by swapping the URL (David's
+// Broughtons contrast test). Unknown keys ignored (fall back to the pinned/default base).
+{ const bkey=new URLSearchParams(location.search).get("base");
+  if(bkey && BASES[bkey]) basePref[mode]=bkey; }
+rememberTp(); syncArrowsTgl();
+syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value); $("note").innerHTML=NOTES[mode];
+
+/* ---------- phone layout DOM (pairs with the @media (max-width:640px) block) ----------
+   The CSS owns all sizing; only the two moves CSS can't express are done here: the header
+   description is hidden (one-line header) and the legend becomes a collapsible overlay
+   INSIDE #map with a ≥44px "Key" toggle. Both are reversed if the viewport crosses back
+   over the breakpoint, so the desktop DOM is untouched at ≥641px. */
+const mobileMQ=matchMedia("(max-width:640px)");
+const legendBtn=document.createElement("button");
+legendBtn.id="legendBtn"; legendBtn.textContent="Key";
+legendBtn.onclick=()=>{ const open=$("legend").classList.toggle("open"); legendBtn.textContent=open?"✕":"Key";
+  legendBtn.classList.toggle("open",open); };   // .open → the button follows the panel to the page bottom
+// the overlay lives inside the map container: keep its taps/scrolls from panning the map under it
+L.DomEvent.disableClickPropagation(legendBtn);
+L.DomEvent.disableClickPropagation($("legend")); L.DomEvent.disableScrollPropagation($("legend"));
+const headerDesc=document.querySelector("header p");
+let mobileApplied=null;                                 // guard: only touch the DOM on a real crossing
+window.mobileLayout=function(){
+  const on=mobileMQ.matches; if(on===mobileApplied) return; mobileApplied=on;
+  if(on){ headerDesc.style.display="none"; $("map").append($("legend"),legendBtn); }
+  else { headerDesc.style.display=""; $("map").before($("legend")); legendBtn.remove(); }
+  map.invalidateSize({animate:false});
+};
+mobileLayout();
+// crossings are also picked up by onViewportChange (debounced resize path) — this direct listener
+// just makes the switch immediate when the browser delivers the media-query change event
+mobileMQ.addEventListener("change",mobileLayout);
+
+if(initGL()) boot();
+
+async function boot(){
+  try{
+    // Manifests first (all small). The wind BINARY is lazy — currents users never pay 3.4 MB.
+    // Live with a per-manifest saved fallback (offline step 4): an airplane-mode relaunch boots
+    // from the saved packs instead of blank-screening; netFetch's timeout keeps one-bar signal
+    // from hanging the boot. manSrc records which source each manifest came from.
+    const manLoad=async(path,ckey,tag)=>{
+      try{ const j=await (await netFetch(R2+path,12000)).json(); manSrc[tag]="live"; return j; }
+      catch(e){ const j=await ocGetJSON(ckey); if(j){ manSrc[tag]="cache"; return j; } throw e; }
+    };
+    const [mm,fm,wm]=await Promise.all([
+      manLoad("/sscofs/meshvel/manifest.json","man/meshvel.json","mm"),
+      manLoad("/sscofs/field/manifest.json","man/field.json","fm"),
+      manLoad("/hrdps/manifest.json","man/hrdps.json","wm").catch(()=>null),
+    ]);
+    meshMan=mm; fieldMan=fm; RUN_CUR=fm.run;   // the field run is what the currents banner clocks
+    windMan=wm; RUN_WIND=wm&&wm.run;
+    // Steepness needs the wind field too, so it falls with wind.
+    const dropWind=()=>{ windDisabled=true;
+                         for(const v of ["wind","steep"]) $("mode").querySelector(`option[value="${v}"]`).disabled=true;
+                         if(mode==="wind"||mode==="steep"){ mode="current"; applyMode(); } };
+    if(!wm || !wm.regions.overview) dropWind();
+    TIMES=inter(mm.hours, fm.hours);
+    if(!windDisabled){
+      const both=inter(TIMES, wm.hours.map(isoToMs));
+      // If the two models' runs barely overlap, keep the currents timeline and drop wind rather
+      // than silently serving a 2-hour app.
+      if(both.length>=12) TIMES=both; else dropWind();
+    }
+    if(!TIMES.length) throw new Error("SSCOFS mesh and field manifests share no forecast hours");
+    $("time").max=TIMES.length-1;
+    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h, both models)`;
+    const h=applyURL();
+    setHour(isFinite(h)?h:0);
+    refreshOfflineUI();
+    await ensureLayer();
+    updateTiles(); updateStale();
+    if(windDisabled) setStatus(loadedSummary()+" · wind unavailable (no overlapping HRDPS hours)");
+  }catch(e){
+    setStatus(isOnline() ? "Failed: "+e.message
+      : (evictionNote||"Offline — nothing saved yet. Connect once and tap “⬇ Save offline”."), true);
+  }
+}
+/* PWA: register the app-shell service worker (skips file:// where SW is unavailable).
+   DEV ORIGINS ARE EXCLUDED. The cape working copy serves this map and the coast wind map from
+   ONE directory, so both workers land on scope "/" — and a scope holds exactly one registration.
+   Whichever map you opened last therefore controls the other and answers its requests cache-first
+   out of a foreign shell (giving distinct script names, sw.js vs coast_sw.js, does NOT prevent
+   this — the scope is the directory, not the filename). Deployed the two apps sit on separate
+   paths, so their scopes never meet and this guard is a no-op there.
+   `?sw=1` opts back in when the offline path itself is what's being tested locally. */
+const DEV_ORIGIN=/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+if("serviceWorker" in navigator && location.protocol.startsWith("http")){
+  if(DEV_ORIGIN && !new URLSearchParams(location.search).has("sw"))
+    // also tear down anything a previous local visit left controlling this origin, so a machine
+    // already stuck in the crossed state heals on the next load instead of needing DevTools
+    navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
+  else
+    addEventListener("load",()=>{ void 0; /* PREVIEW build: intentionally no service worker */ });
+}
+</script>
+</body>
+</html>
