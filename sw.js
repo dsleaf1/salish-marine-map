@@ -17,7 +17,7 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v16";   // 2026-08-02a: base legibility — Esri terrain wind default + high base-contrast filter + Ocean base option + ?base=
+const CACHE_VERSION = "salishmap-shell-v17";   // 2026-08-04a: Roughness layer WITHDRAWN from the public UI (disabled Layer option + note) pending WaveWatch III band revalidation; physics.js untouched
 
 const SHELL = [
   "./",

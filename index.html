@@ -164,7 +164,7 @@
 <body>
 <header>
   <h1>HRDPS Wind and SSCOFS Current Maps</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b> → wind-against-current <b>roughness</b>. <span style="opacity:.7">build 2026-07-23a (Currents: zoomed in past z10, the whole-coast overview now draws <i>alongside</i> the native mesh instead of being switched off by it — a mesh region whose bbox merely clips the corner of your view no longer blanks the modelled water everywhere else on screen (WCVI, Clayoquot to Barkley, was losing a full screen of currents to an 800 m pan), and the tap readout comes back with it; 2026-07-22l: Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → On your course now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b>. <span style="opacity:.7">build 2026-08-04a (the wind-against-current <b>Roughness</b> layer is <b>temporarily withdrawn</b>: compared band for band against WaveWatch III, a peer-reviewed wave model, it reads a band <i>low</i> in the seas that matter most — where WW3 calls the water "High" the roughness layer painted "Medium" about three quarters of the time, and where WW3 called it "Low" it painted "Medium". The layer stays off until both are corrected and re-verified against WW3; the wind and current layers are unaffected and unchanged; 2026-08-02a: base legibility — the coastline and terrain now punch through the translucent wind fill (a contrast + saturation lift on the base map), the wind view defaults to the Esri terrain base, a new <b>Ocean (marine)</b> base (nautical shaded relief + bathymetry) reads especially well under the fill, and a <code>?base=</code> link parameter picks the base from a URL; 2026-07-23a: Currents: zoomed in past z10, the whole-coast overview now draws <i>alongside</i> the native mesh instead of being switched off by it — a mesh region whose bbox merely clips the corner of your view no longer blanks the modelled water everywhere else on screen (WCVI, Clayoquot to Barkley, was losing a full screen of currents to an 800 m pan), and the tap readout comes back with it; 2026-07-22l: Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → On your course now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
 </header>
 <main>
   <div class="bar">
@@ -225,10 +225,29 @@ const R2="https://pub-cb8eb71f75d64a57a0d021318ccd0ae7.r2.dev";
 const SSCOFS_URL="https://nvs.nanoos.org/WaysWaterMoves";
 const HRDPS_URL="https://catalogue.ec.gc.ca/geonetwork/srv/api/records/5b401fa0-6c29-57f0-b3d5-749f301d829d";
 const $=id=>document.getElementById(id);
-// Steepness (wind-against-current risk) is now PUBLIC alongside the currents + wind layers
-// (David approved 2026-07-17). It stays labelled EXPERIMENTAL in the physics panel — the Model
-// Replay archive-and-replay project is the ongoing check of these model bands against real seas.
-const STEEP_ON = true;
+/* Steepness (wind-against-current risk) went PUBLIC 2026-07-17 alongside the currents + wind
+   layers, and is WITHDRAWN from the public UI again 2026-08-04 (David's call) pending band-for-band
+   revalidation against WaveWatch III. The defect: over 18,552 samples at U10 14-22 kt with 1.5 kt
+   of fully opposing current, WW3 calls the sea "High" where this model paints "Medium" 76.1% of the
+   time — an UNDER-read, on the largest row of the confusion matrix. (The companion cell, WW3 "Low"
+   -> model "Medium" at 91.0%, over-warns.) See wave_validation/RESULTS.md §9.2 and
+   Wave_Layer_Discrepancy_Handoff.md; judge any fix on the per-row matrix, NOT on a Medium-or-above
+   indicator, which hides this slide entirely.
+
+   This is a UI gate ONLY — physics.js is untouched and modelHash 3e07c2026658 still stands, so the
+   layer returns by flipping STEEP_ON once the bands agree. The Layer option stays VISIBLE but
+   DISABLED and says why (David 2026-08-04), rather than vanishing: same principle as the
+   "Blank isn't calm" out-of-zone popup. ?dev=1 re-enables the whole layer for David's own use. */
+const STEEP_ON = new URLSearchParams(location.search).get("dev")==="1";
+// Shown on the disabled Layer option (the ONLY place the message reaches phone — .note and the
+// header blurb are both display:none there) and appended to the desktop per-mode note.
+const STEEP_WITHDRAWN_OPT   = "Roughness — withdrawn pending WaveWatch III validation";
+const STEEP_WITHDRAWN_PHONE = "Roughness — withdrawn";
+const STEEP_WITHDRAWN_NOTE  = '<span style="display:block;margin-top:6px"><b>The wind-against-current '
+  + 'roughness layer is temporarily withdrawn (2026-08-04).</b> Compared band for band against '
+  + 'WaveWatch III — a peer-reviewed wave model — it reads a band <i>low</i> in exactly the seas that '
+  + 'matter: where WW3 calls the water "High", this model painted "Medium" about three quarters of the '
+  + 'time. It stays off until that is corrected and re-verified. Wind and currents are unaffected.</span>';
 // [name, center, zoom, key, bbox W,S,E,N] — bboxes MUST match hrdps-ingest/sscofs_mesh.py REGIONS.
 // Order = element ownership priority inside the 0.05° overlaps (earlier region draws, later skips),
 // so translucent neighbours never double-blend into a dark seam.
@@ -1489,6 +1508,10 @@ const NOTES={
   wind:"HRDPS 2.5 km whole-extent field, one resolution at every zoom (there is no finer wind tile). Arrows point <b>downwind</b> (the model stores the direction the wind blows <i>from</i>). Wind is drawn over land as well as water; place names and coastline are drawn on top. Beaufort bins match the standalone wind map exactly.",
   steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. <b>Rings on wind</b> shows the full HRDPS wind field with a roughness ring + cyan current arrow wherever the current is steepening the sea; <b>Shaded cells</b> paints the bands over a plain coastline (switch with <b>Steep display</b>). Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
 };
+// Per-mode hint, plus the roughness withdrawal notice while the layer is off. It rides along under
+// every mode on purpose: NOTES.steep is unreachable once the option is disabled, so this is the only
+// desktop surface the explanation has. Drop the second term when STEEP_ON goes back to true.
+function setNote(){ $("note").innerHTML = NOTES[mode] + (STEEP_ON ? "" : STEEP_WITHDRAWN_NOTE); }
 function buildBaseSelect(){
   const md=MODES[mode], sel=$("base");
   // currents lead with USGS topo; wind & steepness lead with Esri terrain (the wind default), then the
@@ -1532,7 +1555,7 @@ function applyMode(){
   $("mode").value=mode;
   updateSteepControls();
   applyModeGL(); syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value);
-  $("note").innerHTML=NOTES[mode];
+  setNote();
   // Every tile re-decodes: hour indices differ per dataset, and the cached hour is now stale.
   for(const t of [overview,windTile,steepTile,...Object.values(tiles)]) if(t) t.decodedHour=-1;
   ensureLayer(); updateTiles(); render(); updateURL();
@@ -1656,7 +1679,10 @@ refreshOfflineUI();
 
 // Adopt ?mode= before the first base map / GL uniforms / tile pass, so a wind bookmark never pays
 // for the currents stack on the way in. A stale mode is corrected in boot() once manifests land.
-if(!STEEP_ON){ const o=$("mode").querySelector('option[value="steep"]'); o.disabled=true; o.hidden=true; }
+// Withdrawn: the option STAYS in the menu, disabled and relabelled, so a returning user reads why
+// the layer is gone instead of finding it silently missing (David's choice, 2026-08-04). NOT hidden.
+if(!STEEP_ON){ const o=$("mode").querySelector('option[value="steep"]');
+  o.disabled=true; o.textContent=STEEP_WITHDRAWN_OPT; }
 { const q=new URLSearchParams(location.search), m=q.get("mode");
   if(m && MODES[m] && !(m==="steep"&&!STEEP_ON)) mode=m;
   const st=q.get("st"); if(st==="rings"||st==="fill"||st==="course") steepStyle=st;   // before applyMode/alphaRef
@@ -1674,7 +1700,10 @@ if(matchMedia("(max-width:640px)").matches){
   const modeSel=$("mode");
   modeSel.querySelector('option[value="current"]').textContent="Currents";
   modeSel.querySelector('option[value="wind"]').textContent="Wind";
-  modeSel.querySelector('option[value="steep"]').textContent="Roughness (beta)";
+  // Withdrawn: keep the (shorter) withdrawal wording — the phone has no .note and no header blurb,
+  // so this option label is the only place the message lands. Don't let the phone pass overwrite it.
+  modeSel.querySelector('option[value="steep"]').textContent =
+    STEEP_ON ? "Roughness (beta)" : STEEP_WITHDRAWN_PHONE;
 }
 // ?base= overrides the default/pinned base for the URL's mode. Read AFTER the phone pin so it wins on
 // phone too, where the Base dropdown is hidden — lets a phone compare bases by swapping the URL (David's
@@ -1682,7 +1711,7 @@ if(matchMedia("(max-width:640px)").matches){
 { const bkey=new URLSearchParams(location.search).get("base");
   if(bkey && BASES[bkey]) basePref[mode]=bkey; }
 rememberTp(); syncArrowsTgl();
-syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value); $("note").innerHTML=NOTES[mode];
+syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value); setNote();
 
 /* ---------- phone layout DOM (pairs with the @media (max-width:640px) block) ----------
    The CSS owns all sizing; only the two moves CSS can't express are done here: the header
