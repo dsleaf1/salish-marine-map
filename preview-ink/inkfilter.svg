@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- External-file copy of the #baseInk transform at k=6, for the Safari test at
+     preview-ink/inktest.html. Referencing an SVG filter from an EXTERNAL file rather
+     than an inline <svg> is a known Safari quirk area and is fallback #1 if the inline
+     reference turns out to be dropped. Matrix: out = C - 6*(B - R). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0">
+  <filter id="extInk" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values="
+       7 0 -6 0 0
+       6 1 -6 0 0
+       6 0 -5 0 0
+       0 0  0 1 0"/>
+  </filter>
+</svg>

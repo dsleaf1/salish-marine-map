@@ -1,0 +1,273 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>#baseInk — Safari self-test</title>
+<!-- ============================================================================
+     #baseInk iOS SAFARI SELF-TEST  (2026-08-06)
+     Preview-only diagnostic. NO manifest, NO apple-touch link, NO service worker
+     registration — same hijack-proof recipe as compare.html. The filename is not
+     "" / index.html / unified_map.html, so the live root SW's isAppDoc test is
+     false and this routes to the network instead of being served the cached app.
+
+     WHY THIS PAGE EXISTS: the map check came back "no notable difference between
+     ink values", which is also the exact signature of Safari silently dropping
+     `filter: url(#baseInk)`. This page removes map-reading and colour judgement
+     from the test: it renders known colours through the SAME construct production
+     uses (inline <svg><filter> + CSS filter:url(#id)) at k=6, where water must go
+     BLACK and land must go WHITE, and it isolates each way the thing can fail.
+     ============================================================================ -->
+<style>
+  :root{ color-scheme: light; }
+  body{ margin:0; padding:14px 12px 40px; background:#fff; color:#111;
+        font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+        -webkit-text-size-adjust:100%; }
+  h1{ font-size:20px; margin:0 0 6px; }
+  h2{ font-size:15px; margin:26px 0 8px; padding-top:12px; border-top:2px solid #111;
+      letter-spacing:.02em; text-transform:uppercase; }
+  p{ margin:6px 0; }
+  .lede{ background:#fff6d6; border:2px solid #e0b500; border-radius:8px; padding:10px 12px; }
+  .lede b{ font-size:17px; }
+  code{ font:13px/1.3 ui-monospace,Menlo,monospace; background:#f0f0f0; padding:1px 4px; border-radius:3px; }
+
+  /* ---- Section 1: the word card. TWO lines on a white background, with opposite
+         signs of (B−R), so through the k=28 matrix each one flips past the other:
+
+           .w-on  rgb(250,251,255)  B−R = +5   → invisible on white (1.02:1)
+                                    filtered   → rgb(110,111,116), ~5:1, legible
+           .w-off rgb(120, 60, 30)  B−R = −90  → dark brown, obviously legible
+                                    filtered   → clamps to pure white, invisible
+           card   #fff              B−R =  0   → unchanged either way
+
+         So exactly ONE line is ever readable and it names its own verdict. A single
+         faint ghost line could be misread; a line that says which state you are in
+         cannot. This is the whole point of the page. ---- */
+  .wordcard{ background:#fff; border:2px solid #111; border-radius:10px;
+             padding:18px 10px; text-align:center;
+             -webkit-user-select:none; user-select:none; }
+  .word{ font-size:40px; font-weight:800; letter-spacing:.08em; line-height:1.25; }
+  .w-on { color:rgb(250,251,255); }
+  .w-off{ color:rgb(120,60,30); font-size:30px; }
+  .inkWord{ filter:url(#inkWord); -webkit-filter:url(#inkWord); }
+
+  /* ---- swatch grid ---- */
+  .grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .cell{ border:2px solid #111; border-radius:8px; overflow:hidden; }
+  .sw{ height:82px; background:rgb(203,231,255); }          /* sampled USGS water */
+  .sw.land{ background:rgb(231,241,216); }                  /* sampled USGS land  */
+  .cap{ font-size:12px; line-height:1.3; padding:6px 7px; border-top:2px solid #111; }
+  .cap b{ display:block; font-size:13px; }
+  .exp{ color:#0a6b28; font-weight:700; }
+
+  /* the production construct, verbatim */
+  .ink      { filter:url(#inkTest); -webkit-filter:url(#inkTest); }
+  /* production applies the url() and the contrast lift as ONE filter list; if a UA
+     rejects url() inside a list, the WHOLE declaration is invalid and the lift dies
+     with it. That is a separately fixable failure, so it is tested separately. */
+  .inkCombo { filter:url(#inkTest) contrast(1.35) brightness(0.94) saturate(1.18); }
+  .inkExt   { filter:url(inkfilter.svg#extInk); }           /* external-file fallback */
+  .plain    { filter:grayscale(1) brightness(0.35); }        /* CSS-filter control    */
+
+  /* ---- Leaflet-faithful structure: the filtered container holds 3D-transformed
+         descendants, which is the classic Safari filter/compositing drop. The square
+         box is made with the padding-bottom trick rather than aspect-ratio, so an old
+         WebKit can't collapse it and make a working filter look like a blank failure. ---- */
+  .tileimg{ display:block; width:100%; height:auto; }
+  .leaflet-layer{ position:relative; width:100%; height:0; padding-bottom:100%; overflow:hidden; }
+  .leaflet-tile-container{ position:absolute; left:0; top:0; width:100%; height:100%;
+                           transform:translate3d(0px,0px,0px) scale(1);
+                           transform-origin:0 0; will-change:transform; }
+  .leaflet-tile{ position:absolute; left:0; top:0; width:100%; height:auto;
+                 transform:translate3d(0px,0px,0px); }
+
+  #probes{ font:13px/1.55 ui-monospace,Menlo,monospace; background:#f5f5f5;
+           border:2px solid #111; border-radius:8px; padding:10px; white-space:pre-wrap;
+           word-break:break-word; }
+  .ok{ color:#0a6b28; font-weight:700; } .bad{ color:#a80000; font-weight:700; }
+  a{ color:#0645ad; }
+  .links a{ display:block; padding:9px 0; font-size:15px; }
+</style>
+
+<!-- The transform under test, in the SAME form production uses: an inline zero-size
+     <svg> in the document, referenced by CSS filter:url(#id).
+     k = 6  →  out = C − 6·(B − R).  USGS water (203,231,255), B−R = +52, drives every
+     channel below 0 → BLACK. USGS land (231,241,216), B−R = −15, drives every channel
+     above 255 → WHITE. Neutral pixels (B = R) are untouched, so grey contour lines
+     stay grey — which also proves this is a colour MATRIX and not a brightness blowout. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <filter id="inkTest" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values="
+       7 0 -6 0 0
+       6 1 -6 0 0
+       6 0 -5 0 0
+       0 0  0 1 0"/>
+  </filter>
+  <!-- k = 28, used only by the word card (see .wordcard) -->
+  <filter id="inkWord" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values="
+       29 0 -28 0 0
+       28 1 -28 0 0
+       28 0 -27 0 0
+        0 0   0 1 0"/>
+  </filter>
+</svg>
+
+<h1>#baseInk — Safari self-test</h1>
+<p style="margin-top:0;font-size:13px;opacity:.75">Diagnostic page. Not the map, not the app. Nothing here is installed or cached.</p>
+
+<div class="lede">
+  <b>Do this:</b> read section 1 below, then screenshot the whole page (two shots if it
+  doesn’t fit) and send them back. Everything on this page states what it <i>should</i>
+  look like, so nothing needs to be judged by eye.
+</div>
+
+<h2>1 · The one question</h2>
+<p>The card below has <b>two lines of text on it</b>, in two colours the filter pushes in
+opposite directions. Whatever happens, <b>exactly one of them is readable</b> — the other
+is the same colour as the paper.</p>
+<div class="wordcard inkWord">
+  <div class="word w-on" aria-hidden="true">MARLIN&nbsp;42</div>
+  <div class="word w-off" aria-hidden="true">FILTER&nbsp;IS&nbsp;DEAD</div>
+</div>
+<p><b>Which line can you read?</b><br>
+<span class="exp">“MARLIN 42” → the filter is alive in Safari.</span><br>
+<span class="bad">“FILTER IS DEAD” → Safari is dropping it, exactly as feared.</span><br>
+Read me the line, that’s all. You aren’t judging a shade or comparing two loads — one of
+those two phrases is sitting there in plain grey or plain brown, and it names the answer.
+If you can also make out a faint ghost of the <i>other</i> line, ignore it: go by the one
+that is actually dark enough to read at a glance.</p>
+
+<h2>2 · Colour swatches (k = 6)</h2>
+<p>Same colours USGS actually paints, pushed far past the clip point. On a working
+renderer these are not subtle — water goes <b>black</b>, land goes <b>white</b>.</p>
+<div class="grid">
+  <div class="cell"><div class="sw"></div>
+    <div class="cap"><b>A · water, no filter</b>reference only <span class="exp">stays pale blue</span></div></div>
+  <div class="cell"><div class="sw ink"></div>
+    <div class="cap"><b>B · water + <code>url(#…)</code></b>the production construct <span class="exp">should be BLACK</span></div></div>
+  <div class="cell"><div class="sw land"></div>
+    <div class="cap"><b>C · land, no filter</b>reference only <span class="exp">stays pale green</span></div></div>
+  <div class="cell"><div class="sw land ink"></div>
+    <div class="cap"><b>D · land + <code>url(#…)</code></b><span class="exp">should be WHITE</span></div></div>
+  <div class="cell"><div class="sw inkCombo"></div>
+    <div class="cap"><b>E · water, url() + contrast()</b>exactly how production writes it <span class="exp">should be BLACK</span></div></div>
+  <div class="cell"><div class="sw inkExt"></div>
+    <div class="cap"><b>F · water, EXTERNAL .svg</b>fallback #1 <span class="exp">should be BLACK</span></div></div>
+  <div class="cell"><div class="sw plain"></div>
+    <div class="cap"><b>G · water, plain CSS filter</b>control — no url() involved <span class="exp">should be DARK GREY</span></div></div>
+  <div class="cell"><svg viewBox="0 0 100 50" style="display:block;width:100%;height:82px">
+      <rect width="100" height="50" fill="rgb(203,231,255)" filter="url(#inkTest)"/></svg>
+    <div class="cap"><b>H · water, filter INSIDE svg</b>control — not the CSS path <span class="exp">should be BLACK</span></div></div>
+</div>
+<p style="font-size:13px">If <b>B is black but the map looked unchanged</b>, the filter is fine and the
+map comparison was just made between values too close together. If <b>B is still pale blue
+while G is dark grey</b>, Safari supports CSS filters but is dropping the <code>url()</code>
+reference — that is the failure case.</p>
+
+<h2>3 · A tile, drawn the way Leaflet draws it</h2>
+<p>Sections 1–2 filter plain boxes. The real target is a container of <code>&lt;img&gt;</code>
+tiles positioned with <code>translate3d</code>, which is a separate thing for Safari to get
+wrong. Land/contours/road on the left of the coast, water on the right.</p>
+<div class="grid">
+  <div class="cell"><img id="t1" class="tileimg" alt="">
+    <div class="cap"><b>I · test tile, no filter</b>reference only</div></div>
+  <div class="cell"><div class="leaflet-layer baseTiles ink">
+      <div class="leaflet-tile-container"><img id="t2" class="leaflet-tile tileimg" alt=""></div></div>
+    <div class="cap"><b>J · filtered, Leaflet structure</b><span class="exp">water → black, land → white, grey contour lines still grey</span></div></div>
+  <div class="cell"><img id="t3" class="tileimg" alt="">
+    <div class="cap"><b>K · real USGS tile, no filter</b>11/695/313 — reference only</div></div>
+  <div class="cell"><div class="leaflet-layer baseTiles ink">
+      <div class="leaflet-tile-container"><img id="t4" class="leaflet-tile tileimg" alt=""></div></div>
+    <div class="cap"><b>L · same real tile, filtered</b><span class="exp">water → black</span> — if K is blank too, the tile just didn’t load</div></div>
+</div>
+
+<h2>4 · Automatic probes</h2>
+<p style="font-size:13px">These are measured by the page itself, not by eye. They cost
+nothing to collect and they price the fallbacks if the filter turns out to be dead.</p>
+<div id="probes">running…</div>
+
+<h2>5 · The map, if section 1 says the filter is alive</h2>
+<p>Then the map itself needs the far-apart comparison, not values near k=0.5:</p>
+<p class="links">
+  <a href="compare.html?mode=wind&lat=49.8783&lon=-124.8225&z=11&h=16&a=0.70&ink=off">① map with ink=off</a>
+  <a href="compare.html?mode=wind&lat=49.8783&lon=-124.8225&z=11&h=16&a=0.70&ink=6">② map with ink=6 (water near-black)</a>
+</p>
+<p style="font-size:13px">Those two must be night-and-day. If they look the same while the
+word above is readable, the problem is the map layer, not the filter.</p>
+
+<script>
+/* ---------------- the synthetic tile ----------------
+   A 256×256 PNG built from the colours sampled off USGS tile 11/695/313 on 2026-08-06:
+   land rgb(231,241,216), shallow water rgb(203,231,255), a deeper-blue bathy band, neutral
+   grey contour lines (B=R, must pass through unchanged) and a warm road (B<R, must lighten).
+   Embedded so sections 3's first pair works with no network at all. */
+const TILE = "data:image/png;base64,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";
+document.getElementById("t1").src = TILE;
+document.getElementById("t2").src = TILE;
+
+const REAL = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/11/695/313";
+document.getElementById("t3").src = REAL;
+document.getElementById("t4").src = REAL;
+
+/* ---------------- automatic probes ----------------
+   Nothing here can measure the CSS filter:url() path — there is no API that reads back a
+   composited HTML element, which is exactly why sections 1–3 exist. What these DO measure
+   is the cost of each fallback route, so one screenshot answers both questions. */
+const out = [];
+const mark = (ok, s) => `<span class="${ok?'ok':'bad'}">${ok?'WORKS':'NO'}</span> ${s}`;
+
+function probeCanvasFilter(expr){
+  try{
+    const c = document.createElement("canvas"); c.width = c.height = 8;
+    const x = c.getContext("2d");
+    if(!("filter" in x)) return {sup:false, px:null};
+    x.filter = expr;
+    x.fillStyle = "rgb(203,231,255)"; x.fillRect(0,0,8,8);
+    const d = x.getImageData(0,0,1,1).data;
+    return {sup:true, px:[d[0],d[1],d[2]]};
+  }catch(e){ return {sup:false, px:null, err:String(e)}; }
+}
+
+// (a) canvas ctx.filter with a plain function — is the property implemented at all?
+const a = probeCanvasFilter("grayscale(1)");
+out.push(a.sup ? mark(a.px && a.px[0]===a.px[2], `canvas ctx.filter (plain) → rgb(${a.px})`)
+               : mark(false, "canvas ctx.filter — property not implemented"));
+
+// (b) canvas ctx.filter with the SVG url() reference — fallback: draw tiles through a canvas.
+const b = probeCanvasFilter("url(#inkTest)");
+out.push(b.sup ? mark(b.px && b.px[0] < 40, `canvas ctx.filter url(#inkTest) → rgb(${b.px}) (want near 0,0,0)`)
+               : mark(false, "canvas ctx.filter url() — unavailable"));
+
+// (c) can we read USGS tile pixels? decides whether a JS pixel-transform fallback is even possible.
+(function(){
+  const im = new Image(); im.crossOrigin = "anonymous";
+  im.onload = () => {
+    let msg;
+    try{
+      const c = document.createElement("canvas"); c.width = c.height = 16;
+      const x = c.getContext("2d"); x.drawImage(im,0,0);
+      const d = x.getImageData(0,0,1,1).data;
+      msg = mark(true, `USGS tile pixels readable (CORS ok) → sample rgb(${d[0]},${d[1]},${d[2]})`);
+    }catch(e){ msg = mark(false, "USGS tile pixels blocked (no CORS) — JS pixel transform not possible"); }
+    render(msg);
+  };
+  im.onerror = () => render(mark(false, "USGS tile failed to load (offline or blocked)"));
+  im.src = REAL + "?cb=" + Date.now();
+})();
+
+// (d) misc support flags
+const sup = (p,v) => (window.CSS && CSS.supports && CSS.supports(p,v));
+out.push(mark(sup("backdrop-filter","invert(1)") || sup("-webkit-backdrop-filter","invert(1)"),
+              "backdrop-filter"));
+out.push(mark(sup("filter","url(#inkTest)"), "CSS.supports filter:url(#…)  ⚠ parse-time only, not proof it renders"));
+out.push(mark(sup("filter","url(#inkTest) contrast(1.35)"), "CSS.supports filter:url(#…) + contrast() together"));
+
+let extra = "";
+function render(more){
+  if(more) extra += "\n" + more;
+  document.getElementById("probes").innerHTML =
+    out.join("\n") + extra +
+    "\n\nscreen " + screen.width + "×" + screen.height + " @" + (window.devicePixelRatio||1) +
+    "x · standalone " + !!(navigator.standalone || matchMedia("(display-mode: standalone)").matches) +
+    "\n" + navigator.userAgent;
+}
+render();
+</script>
