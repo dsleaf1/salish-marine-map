@@ -1,0 +1,291 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>#baseInk — round 2, the tile-container fix</title>
+<!-- ============================================================================
+     #baseInk iOS SAFARI SELF-TEST, ROUND 2  (2026-08-06)
+     Preview-only diagnostic. NO manifest, NO apple-touch link, NO service worker
+     registration — same hijack-proof recipe as inktest.html / compare.html. The
+     filename is not "" / index.html / unified_map.html, so the live root SW's
+     isAppDoc test is false and this routes to the network instead of being served
+     the cached app.
+
+     WHAT ROUND 1 SETTLED (David's iPhone, Safari, 2026-08-06):
+       card = "MARLIN 42"   → filter:url(#…) IS alive in iOS Safari
+       B black, E black     → works on a plain box, and works inside a filter LIST
+       G grey               → plain CSS filters work (control passed)
+       F pale blue          → the EXTERNAL .svg#id reference is DEAD. Fallback dropped.
+       J, L untransformed   → it dies on Leaflet's tile structure specifically.
+
+     So the failure is NOT filter support. It is WebKit declining to run an SVG
+     filter on an element with a composited (3D-transformed) subtree — J and L are
+     the only round-1 cells whose filtered element wraps translate3d'd children.
+
+     WHAT THIS PAGE IS FOR: find the one-line fix. Every cell below puts the SAME
+     k=6 matrix on the SAME tile in the SAME Leaflet structure, changing exactly one
+     thing each time. Water going BLACK means that variant works.
+     ============================================================================ -->
+<style>
+  :root{ color-scheme: light; }
+  body{ margin:0; padding:14px 12px 40px; background:#fff; color:#111;
+        font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+        -webkit-text-size-adjust:100%; }
+  h1{ font-size:20px; margin:0 0 6px; }
+  h2{ font-size:15px; margin:26px 0 8px; padding-top:12px; border-top:2px solid #111;
+      letter-spacing:.02em; text-transform:uppercase; }
+  p{ margin:6px 0; }
+  .lede{ background:#fff6d6; border:2px solid #e0b500; border-radius:8px; padding:10px 12px; }
+  .lede b{ font-size:17px; }
+  code{ font:13px/1.3 ui-monospace,Menlo,monospace; background:#f0f0f0; padding:1px 4px; border-radius:3px; }
+
+  .grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .cell{ border:2px solid #111; border-radius:8px; overflow:hidden; }
+  .cap{ font-size:12px; line-height:1.3; padding:6px 7px; border-top:2px solid #111; }
+  .cap b{ display:block; font-size:13px; }
+  .exp{ color:#0a6b28; font-weight:700; }
+  .ok{ color:#0a6b28; font-weight:700; } .bad{ color:#a80000; font-weight:700; }
+  a{ color:#0645ad; }
+
+  /* ---- The Leaflet structure, CORRECTED against vendor/leaflet.css and against what
+         Leaflet actually emits at runtime. Two fixes vs round 1's page:
+
+         (1) Round 1 gave .tc `will-change:transform`. Real Leaflet does NOT — that
+             property appears only on `svg.leaflet-zoom-animated`. It was synthetic.
+         (2) Round 1 used translate3d(0px,0px,0px) everywhere. An all-zero translate3d
+             computes to `matrix(1,0,0,1,0,0)` — a plain 2D matrix, indistinguishable
+             from translate(). So a 3D-vs-2D cell would have compared nothing. Real
+             Leaflet leaves the CONTAINER at zero and gives each tile <img> a genuine
+             non-zero translate3d(x,y,0), which is what .tl does here; .tc is pulled
+             back with left/top so the tile still lands square in the box.
+
+         .lf is the filtered container (production puts the filter on
+         .leaflet-layer.baseTiles); .tc is the tile container; .tl is the tile <img>.
+         Square box via padding-bottom, NOT aspect-ratio, so an old WebKit can't
+         collapse it and make a working filter look like a blank failure. ---- */
+  .tileimg{ display:block; width:100%; height:auto; }
+  .lf{ position:relative; width:100%; height:0; padding-bottom:100%; overflow:hidden; }
+  .tc{ position:absolute; left:-48px; top:-48px; width:100%; height:100%;
+       transform:translate3d(0px,0px,0px) scale(1); transform-origin:0 0; }
+  .tl{ position:absolute; left:0; top:0; width:100%; height:auto;
+       transform:translate3d(48px,48px,0px); }
+
+  /* The transform under test. k=6: USGS water (203,231,255), B−R=+52 → every channel
+     below 0 → BLACK. USGS land (231,241,216), B−R=−15 → above 255 → WHITE. Neutral
+     pixels (B=R) untouched, so grey contour lines STAY GREY — that is the proof this
+     is a colour matrix and not a brightness blowout. */
+  .ink{ filter:url(#inkTest); -webkit-filter:url(#inkTest); }
+
+  /* ---- the six variants. Each changes exactly ONE thing. ---- */
+
+  /* M — filter on the tile <img> itself, not on its ancestor. The img is a leaf: there
+     is no composited subtree beneath it. Round 1 never tested this. If it works it is
+     a one-line CSS change in production and Leaflet is untouched. */
+  .v-M .tl{ filter:url(#inkTest); -webkit-filter:url(#inkTest); }
+
+  /* N — ancestor filter + isolation:isolate, to push WebKit onto its non-composited
+     filter path. One line in production, no Leaflet change. */
+  .v-N{ filter:url(#inkTest); -webkit-filter:url(#inkTest); isolation:isolate; }
+
+  /* O — ancestor filter, with the filtered element promoted to its own compositing
+     layer via translateZ(0). The classic WebKit workaround: give the filter target
+     its own layer so it isn't trying to filter across someone else's. One line in
+     production, no Leaflet change. */
+  .v-O{ filter:url(#inkTest); -webkit-filter:url(#inkTest);
+        transform:translateZ(0); }
+
+  /* P — ancestor filter, NO transforms anywhere; tiles positioned with left/top.
+     This is what window.L_DISABLE_3D produces. The control: if P is black and
+     M/N/O/Q are all blue, the transform is definitively the cause. */
+  .v-P{ filter:url(#inkTest); -webkit-filter:url(#inkTest); }
+  .v-P .tl{ transform:none; left:48px; top:48px; }
+
+  /* Q — ancestor filter over a BARE <img>: no tile container, no absolute positioning,
+     no transform anywhere. Round 1 never asked this. Its cell B filtered a <div> with a
+     background-colour and its cell I was an UNFILTERED <img> — so nothing yet tells us
+     whether iOS Safari will apply filter:url() to a replaced element at all. If Q is
+     blue, the <img> itself is the problem and every CSS route dies together.
+
+     (This replaced a planned "2D translate vs translate3d" cell. It would have compared
+     nothing: translate3d(x,y,0) has a zero z, so it computes to the same 2D matrix as
+     translate(x,y) — verified by getComputedStyle. Leaflet's setPosition emits exactly
+     that zero-z form, so the real map has no genuine 3D transform to blame.) */
+  .v-Q{ filter:url(#inkTest); -webkit-filter:url(#inkTest); }
+
+  /* S1 / S2 — the production filter LIST question, asked inside the failing structure.
+     S1 is the lift alone, i.e. exactly what the LIVE map runs today. S2 adds the
+     url() in front of it, i.e. exactly what the local file would ship. If S2 looks
+     like S1, the url() is dropped but the lift survives → shipping is harmless. If S2
+     looks like the unfiltered reference, the whole declaration dies and shipping the
+     local file COSTS the lift on the phone. Round 1's cell E could not answer this:
+     it tested a plain box, where the url() works. */
+  .v-S1{ filter:contrast(1.35) brightness(0.94) saturate(1.18); }
+  .v-S2{ filter:url(#inkTest) contrast(1.35) brightness(0.94) saturate(1.18); }
+
+  #probes{ font:13px/1.55 ui-monospace,Menlo,monospace; background:#f5f5f5;
+           border:2px solid #111; border-radius:8px; padding:10px; white-space:pre-wrap;
+           word-break:break-word; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <filter id="inkTest" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values="
+       7 0 -6 0 0
+       6 1 -6 0 0
+       6 0 -5 0 0
+       0 0  0 1 0"/>
+  </filter>
+</svg>
+
+<h1>#baseInk — round 2</h1>
+<p style="margin-top:0;font-size:13px;opacity:.75">Diagnostic page. Not the map, not the app. Nothing here is installed or cached.</p>
+
+<div class="lede">
+  <b>Round 1 answered the hard part.</b> The filter works on your phone — it just doesn’t
+  work on the map’s tiles. Every box below is the same tile with the same filter, in the
+  same Leaflet structure that failed, changing one thing each time.<br><br>
+  <b>Do this:</b> for each lettered box, tell me <b>black</b> or <b>still pale blue</b>.
+  Screenshot the page (two shots if it doesn’t fit) and send them back.
+</div>
+
+<h2>0 · Reference — what the tile looks like untouched</h2>
+<div class="grid">
+  <div class="cell"><img id="ref1" class="tileimg" alt="">
+    <div class="cap"><b>REF · no filter at all</b>land pale green, water pale blue, contour lines grey, one warm road</div></div>
+  <div class="cell"><div class="lf ink"><div class="tc"><img id="ref2" class="tl tileimg" alt=""></div></div>
+    <div class="cap"><b>REF-FAIL · round 1’s cell J, corrected</b>the known failure <span class="bad">expect: still pale blue</span></div></div>
+</div>
+<p style="font-size:13px"><b>This is the cell everything below is measured against.</b> It is
+round 1’s failing cell J with the structure corrected to match real Leaflet (round 1 added a
+<code>will-change</code> Leaflet doesn’t use, and used an all-zero <code>translate3d</code>
+that collapses to a 2D matrix). If REF-FAIL is <b>still pale blue</b>, good — the failure
+reproduces and every verdict below is meaningful. If REF-FAIL comes out <b>black</b>, then the
+at-rest structure alone isn’t what breaks it on the real map, and the cells below can’t be
+read at face value — <b>tell me that and stop there</b>.</p>
+
+<h2>1 · The candidate fixes</h2>
+<p style="font-size:13px">All four are one-liners. <b>Black water = that variant works.</b>
+Grey contour lines must stay grey in any box that works.</p>
+<div class="grid">
+  <div class="cell"><div class="lf v-M"><div class="tc"><img class="tl tileimg tsrc" alt=""></div></div>
+    <div class="cap"><b>M · filter on the tile <code>&lt;img&gt;</code></b>not on its ancestor <span class="exp">want BLACK</span></div></div>
+
+  <div class="cell"><div class="lf v-N"><div class="tc"><img class="tl tileimg tsrc" alt=""></div></div>
+    <div class="cap"><b>N · ancestor + <code>isolation:isolate</code></b><span class="exp">want BLACK</span></div></div>
+
+  <div class="cell"><div class="lf v-O"><div class="tc"><img class="tl tileimg tsrc" alt=""></div></div>
+    <div class="cap"><b>O · ancestor + <code>translateZ(0)</code></b>promote the filter target to its own layer <span class="exp">want BLACK</span></div></div>
+
+  <div class="cell"><div class="v-Q"><img class="tileimg tsrc" alt=""></div>
+    <div class="cap"><b>Q · bare <code>&lt;img&gt;</code>, nothing else</b>can Safari filter an image at all? <span class="exp">want BLACK</span></div></div>
+</div>
+
+<h2>2 · The control — is the transform really the cause?</h2>
+<div class="grid">
+  <div class="cell"><div class="lf v-P"><div class="tc"><img class="tl tileimg tsrc" alt=""></div></div>
+    <div class="cap"><b>P · no transforms at all</b>what <code>L_DISABLE_3D</code> gives <span class="exp">want BLACK</span></div></div>
+  <div class="cell" style="border-style:dashed"><div style="padding:10px;font-size:12px;line-height:1.4">
+    If <b>P is black</b> while M/N/O are blue, the tile transform is confirmed as the
+    cause and <code>L_DISABLE_3D</code> is the only CSS-level route left — at the cost of
+    Leaflet’s smooth pan/zoom, globally, for every layer.<br><br>
+    If <b>P and Q are both blue</b>, the transform is innocent: Safari simply won’t run a
+    <code>url()</code> filter on an <code>&lt;img&gt;</code>, every CSS route dies together,
+    and the canvas in section 4 is the answer.</div></div>
+</div>
+
+<h2>3 · Does the contrast lift survive?</h2>
+<p style="font-size:13px">The live map runs the lift alone today. The local file would ship
+the lift with <code>url()</code> in front of it. <b>Compare these two to each other</b>,
+not to black — the question is only whether they look the SAME.</p>
+<div class="grid">
+  <div class="cell"><div class="lf v-S1"><div class="tc"><img class="tl tileimg tsrc" alt=""></div></div>
+    <div class="cap"><b>S1 · lift only</b><code>contrast brightness saturate</code> — what’s live now</div></div>
+  <div class="cell"><div class="lf v-S2"><div class="tc"><img class="tl tileimg tsrc" alt=""></div></div>
+    <div class="cap"><b>S2 · <code>url()</code> + the same lift</b>what the local file would ship</div></div>
+</div>
+<p style="font-size:13px"><b>S2 looks like S1</b> → the <code>url()</code> is dropped but the
+lift survives; shipping costs nothing. <b>S2 looks like the plain REF</b> → the whole
+declaration dies and shipping the local file would <span class="bad">lose you the contrast
+lift you have today</span>.</p>
+
+<h2>4 · The fallback that doesn’t depend on any of this</h2>
+<p style="font-size:13px">The same matrix applied in JavaScript, pixel by pixel, drawn to a
+<code>&lt;canvas&gt;</code>. No CSS filter, no SVG, nothing for WebKit to decline. This is
+what the map would do if none of M/N/O/P/Q works.</p>
+<div class="grid">
+  <div class="cell"><canvas id="cv" width="256" height="256" style="display:block;width:100%;height:auto"></canvas>
+    <div class="cap"><b>R · canvas pixel transform</b>synthetic tile <span class="exp">want BLACK water, WHITE land, GREY contours</span></div></div>
+  <div class="cell"><canvas id="cv2" width="256" height="256" style="display:block;width:100%;height:auto"></canvas>
+    <div class="cap"><b>R2 · same, on the REAL USGS tile</b>needs network + CORS <span class="exp">want BLACK water</span></div></div>
+</div>
+
+<h2>5 · Automatic probes</h2>
+<div id="probes">running…</div>
+
+<script>
+/* The 256×256 synthetic tile from round 1, built from the colours sampled off USGS tile
+   11/695/313 on 2026-08-06: land rgb(231,241,216), shallow water rgb(203,231,255), a
+   deeper bathy band, neutral grey contour lines (B=R, must pass through unchanged) and a
+   warm road (B<R, must lighten). Embedded so every CSS cell works with NO network. */
+const TILE = "data:image/png;base64,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";
+const REAL = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/11/695/313";
+
+document.getElementById("ref1").src = TILE;
+document.getElementById("ref2").src = TILE;
+for(const el of document.querySelectorAll(".tsrc")) el.src = TILE;
+
+/* ---- section 4: the matrix in plain JS. out = C − k·(B−R), k=6, clamped 0…255.
+   Identical arithmetic to the feColorMatrix, so a correct render here proves the
+   canvas route reproduces #baseInk exactly, on THIS device, with no CSS filter. */
+function inkCanvas(cv, img, k){
+  const x = cv.getContext("2d");
+  x.drawImage(img, 0, 0, cv.width, cv.height);
+  let d;
+  try{ d = x.getImageData(0, 0, cv.width, cv.height); }
+  catch(e){ return "tainted (no CORS)"; }
+  const p = d.data;
+  for(let i = 0; i < p.length; i += 4){
+    const dv = k * (p[i+2] - p[i]);                       // k·(B−R)
+    p[i]   = Math.max(0, Math.min(255, p[i]   - dv));
+    p[i+1] = Math.max(0, Math.min(255, p[i+1] - dv));
+    p[i+2] = Math.max(0, Math.min(255, p[i+2] - dv));
+  }
+  x.putImageData(d, 0, 0);
+  return "ok";
+}
+const out = [];
+const mark = (ok, s) => `<span class="${ok?'ok':'bad'}">${ok?'WORKS':'NO'}</span> ${s}`;
+let extra = "";
+function render(more){
+  if(more) extra += "\n" + more;
+  document.getElementById("probes").innerHTML = out.join("\n") + extra +
+    "\n\nscreen " + screen.width + "×" + screen.height + " @" + (window.devicePixelRatio||1) +
+    "\n" + navigator.userAgent;
+}
+
+const si = new Image();
+si.onload = () => {
+  const t0 = performance.now();
+  const r = inkCanvas(document.getElementById("cv"), si, 6);
+  render(mark(r === "ok", `canvas pixel transform, synthetic tile → ${r} (${(performance.now()-t0).toFixed(1)} ms for 256×256)`));
+};
+si.onerror = () => render(mark(false, "synthetic tile failed to decode"));
+si.src = TILE;
+
+const ri = new Image();
+ri.crossOrigin = "anonymous";
+ri.onload = () => {
+  const t0 = performance.now();
+  const r = inkCanvas(document.getElementById("cv2"), ri, 6);
+  render(mark(r === "ok", `canvas pixel transform, REAL USGS tile → ${r} (${(performance.now()-t0).toFixed(1)} ms)`));
+};
+ri.onerror = () => render(mark(false, "real USGS tile failed to load (offline or blocked)"));
+ri.src = REAL + "?cb=" + Date.now();
+
+/* Parse-time support flags. ⚠ CSS.supports is parse-time ONLY — round 1 proved a
+   declaration can parse and still not render on a composited subtree. Recorded for the
+   log, never as evidence. */
+const sup = (p,v) => (window.CSS && CSS.supports && CSS.supports(p,v));
+out.push(mark(sup("isolation","isolate"), "isolation:isolate supported (cell N)"));
+out.push(mark(sup("will-change","filter"), "will-change:filter supported"));
+out.push(mark(sup("mix-blend-mode","multiply"), "mix-blend-mode:multiply — the blended top-copy fallback"));
+render();
+</script>
