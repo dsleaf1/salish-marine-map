@@ -23,7 +23,9 @@
             keeping terrain and place labels readable. */
          --base-filter: contrast(1.35) brightness(0.94) saturate(1.18);  /* "med" — David's pick 2026-08-06 */
          /* Blue→black transform (the #baseInk feColorMatrix in <body>), kept SEPARATE from the
-            contrast lift so each can be tuned on its own: ?ink= sets k, ?filter= sets the lift. */
+            contrast lift so each can be tuned on its own: ?ink= sets k, ?filter= sets the lift.
+            It is also applied on a DIFFERENT ELEMENT (the tile <img>, not the layer container) —
+            iOS Safari drops url() filters on the container and kills the lift with them. */
          --base-ink: url(#baseInk); }
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink);line-height:1.45}
@@ -56,10 +58,19 @@
   #map{height:640px;border:1px solid var(--line);border-radius:12px;position:relative}
   /* stacking is owned by the "fields" pane (z 450); within it, DOM order puts arrows over the fill */
   .ovl{position:absolute;top:0;left:0;pointer-events:none}
-  /* base-tile contrast lift — scoped to the base layer's own container (className:"baseTiles" in
-     setBase), so it never touches the "labels" pane or the field/arrow canvases in "fields" */
-  /* ink (blue→black) runs FIRST on the raw tile, then the contrast/brightness lift */
-  .leaflet-layer.baseTiles{filter:var(--base-ink) var(--base-filter);}
+  /* base-tile filters — scoped to the base layer's own container (className:"baseTiles" in
+     setBase), so they never touch the "labels" pane or the field/arrow canvases in "fields".
+     ink (blue→black) runs FIRST on the raw tile, then the contrast/brightness lift on the layer.
+
+     🔑 THE TWO ARE DELIBERATELY SPLIT ACROSS TWO ELEMENTS — do NOT recombine them.
+     Measured on David's iPhone (preview-ink/inktest2.html, 2026-08-06): iOS Safari refuses to run
+     filter:url(#…) on the tile CONTAINER (cells P / REF-FAIL) but runs it fine on the tile <img>
+     itself (cell M) — and a rejected url() on the container takes the WHOLE declaration with it,
+     silently killing the contrast lift too (cell S2). So url(#baseInk) may only ever sit on
+     .leaflet-tile; the plain lift stays on the container, where it already works on his phone.
+     Transforms are NOT the cause (cell P: no transforms anywhere, still dropped). */
+  .baseTiles .leaflet-tile{filter:var(--base-ink);}
+  .leaflet-layer.baseTiles{filter:var(--base-filter);}
   .legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center}
   .lchip{display:flex;align-items:center;gap:6px;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;background:#fff}
   .lsw{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.15)}
@@ -505,7 +516,9 @@ for(const [p,z] of [["fields",450],["labels",460]]){
 let baseLayer=null, labelLayer=null;
 function setBase(key){
   if(baseLayer) map.removeLayer(baseLayer);
-  // className "baseTiles" scopes the contrast filter (--base-filter) to THIS layer's container only —
+  // className "baseTiles" scopes both base filters to THIS layer only — the lift (--base-filter) to the
+  // container it lands on, the ink (--base-ink) to the .leaflet-tile images inside it (they must stay on
+  // separate elements — see the CSS at the top for the iOS Safari reason).
   // labels sit in the "labels" pane and the field/arrow canvases in "fields", so neither is touched.
   // maxNativeZoom (ocean) lets Leaflet upscale the last cached level instead of drawing blank tiles.
   const b=BASES[key]; baseLayer=L.tileLayer(b.url,{maxZoom:16,maxNativeZoom:b.maxNativeZoom,attribution:b.attr,className:"baseTiles"}).addTo(map);
