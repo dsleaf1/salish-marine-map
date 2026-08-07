@@ -17,7 +17,8 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v18";   // 2026-08-07a: base legibility under the wind fill (one base map — USGS topo — with #baseInk on the tile <img> and the contrast lift on the layer container; base selector removed), collapsible About, desktop ➤ arrows toggle, and the Roughness-layer reporting pass (Sea State / Wave Steepness / Quartering (beta), no Low ring, grey Medium, no Shaded cells, black wind arrows); physics.js untouched
+const CACHE_VERSION = "salishmap-shell-v19";   // 2026-08-07b: force_explorer.html DEBANDED — it was the only public page still painting the withdrawn five-level absolute scale. Steepness now follows the maps' reporting pass (bands 0–1 unnamed, Medium grey, only High/Very high are warnings); the quartering pills drop the band word and colour entirely for "<n>% of worst · Q x.xx" plus an explicit uncalibrated label (option (e+)). Also debanded: the danger rose's steepness cutline rings and the session recorder's table/CSV/PDF exports. index.html and physics.js UNCHANGED — this bump exists only because force_explorer.html is precached below
+// v18 was 2026-08-07a: base legibility under the wind fill (one base map — USGS topo — with #baseInk on the tile <img> and the contrast lift on the layer container; base selector removed), collapsible About, desktop ➤ arrows toggle, and the Roughness-layer reporting pass (Sea State / Wave Steepness / Quartering (beta), no Low ring, grey Medium, no Shaded cells, black wind arrows); physics.js untouched
 // v17 was 2026-08-04a: Roughness layer WITHDRAWN from the public UI (disabled Layer option + note) pending WaveWatch III band revalidation; physics.js untouched
 
 const SHELL = [

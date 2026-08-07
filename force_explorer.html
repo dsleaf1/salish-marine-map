@@ -63,6 +63,10 @@
   .readout-grid .kv .k{color:var(--muted)}
   .readout-grid .kv .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;flex-shrink:0}
   .bandpill{display:inline-block;padding:2px 12px;border-radius:11px;color:#fff;font-weight:700;font-size:13px}
+  /* (e+) DEBAND 2026-08-07: the quartering pills no longer carry a band colour, so they must not use
+     .bandpill's white-on-fill styling. Neutral outlined chip — deliberately NOT a severity colour. */
+  .qpill{display:inline-block;padding:2px 10px;border-radius:11px;border:1px solid var(--line);
+    background:#f5f7fa;color:#1b2430;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums}
   .metric{display:flex;gap:14px;flex-wrap:wrap;margin-top:6px}
   .metric .m{flex:1 1 120px;background:#f5f7fa;border:1px solid var(--line);border-radius:9px;padding:9px 11px}
   .metric .m .lab{font-size:11px;color:var(--muted)} .metric .m .num{font-size:19px;font-weight:700}
@@ -184,10 +188,11 @@
       </div>
       <div class="pillstrip">
         <div class="pillitem"><div class="lab">Steepness band</div><div id="bandpill" class="bandpill"></div></div>
-        <div class="pillitem"><div class="lab">Transit N ↑ (up-channel)</div><div id="qN" class="bandpill"></div></div>
-        <div class="pillitem"><div class="lab">Transit S ↓ (down-channel)</div><div id="qS" class="bandpill"></div></div>
-        <div class="pillitem" style="border-color:#8e1c6b"><div class="lab">Your course <span id="qHlab"></span></div><div id="qH" class="bandpill"></div></div>
+        <div class="pillitem"><div class="lab">Transit N ↑ (up-channel)</div><div id="qN" class="qpill"></div></div>
+        <div class="pillitem"><div class="lab">Transit S ↓ (down-channel)</div><div id="qS" class="qpill"></div></div>
+        <div class="pillitem" style="border-color:#8e1c6b"><div class="lab">Your course <span id="qHlab"></span></div><div id="qH" class="qpill"></div></div>
       </div>
+      <div class="cap" id="qscale" style="margin-top:6px"></div>
 
       <div class="panel" style="margin-top:16px">
         <div id="bandwhy" style="font-size:13px;color:var(--muted)"></div>
@@ -231,8 +236,8 @@
           <table class="cmp" id="cmpTable">
             <thead><tr>
               <th>#</th><th>Snapshot</th><th>Sea</th><th>Block</th><th>Wind kt</th><th>Dir°</th><th>Current kt</th><th>Set</th>
-              <th>L km</th><th>W km</th><th>Band</th><th>Hs·w m</th><th>Tp s</th><th>S</th><th>P kW/m</th>
-              <th>Transit N</th><th>Transit S</th><th>Spread</th><th></th>
+              <th>L km</th><th>W km</th><th>Steepness</th><th>Hs·w m</th><th>Tp s</th><th>S</th><th>P kW/m</th>
+              <th>Transit N (rel Q)</th><th>Transit S (rel Q)</th><th>Spread</th><th></th>
             </tr></thead>
             <tbody id="cmpBody"></tbody>
           </table>
@@ -425,7 +430,27 @@
 <script>
 const $=id=>document.getElementById(id);
 // model physics live in physics.js (shared with the map + Node harnesses); this script is GUI only
-const BAND_COL=["#9fb3c8","#5b7186","#f2b705","#e8590c","#8e1c6b"];   // BAND_WORD comes from physics.js
+/* ---- (e+) DEBAND — David's option C, 2026-08-07 --------------------------------------------------
+   Until now this page was the only public surface still painting the FULL five-level absolute scale
+   (Very low / Low / Medium / High / Very high, five saturated colours) — the same scale the maps
+   withdrew. Two separate corrections, matching what unified_map.html already does:
+
+   1. STEEPNESS BAND — the maps' reporting pass (unified_map.html:419-439). Bands 0 and 1 are no
+      longer NAMED: "Low" read as a reassurance, and the WW3 comparison that withdrew the layer found
+      the model reading a band LOW, so the bands it can least defend are now the silent ones. Medium
+      is GREY, not amber — only High (orange) and Very high (magenta) are warning colours.
+      ⚠ The bands themselves are UNCHANGED: physics.js is untouched. This is a reporting change.
+   2. QUARTERING — the absolute band display is GONE entirely (option (e+), 2026-08-05;
+      Quartering_Literature_Findings.md §11). qBand turned an uncalibrated index into "Low"/"none",
+      which is exactly the false negative that decision removed. What the pills report instead is
+      RELATIVE — where a heading sits against the WORST heading in this same sea — plus the raw index,
+      explicitly labelled uncalibrated. Option (e) is "label rather than calibrate", not "hide".
+   ⛔ Do not reintroduce BAND_COL/BAND_WORD or qBand on this page. `qBand` still exists in physics.js
+      (other harnesses read it) and BAND_WORD is still exported — neither is called from here now. */
+const RING_GREY="#6e747a";        // neutral mid-grey: no hue, so a Medium ring can't be read as a warning
+const QUIET_COL="#9fb3c8";        // "nothing reported" — the map's same slate
+const STEEP_COL=[null,null,RING_GREY,"#e8590c","#8e1c6b"];        // 0-1 unnamed · 2 medium · 3 high · 4 very high
+const STEEP_WORD=["","","Medium","High","Very high"];             // indices 0/1 intentionally blank
 const compass=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
 const cmp=d=>compass[Math.round(((d%360)+360)%360/22.5)%16];
 
@@ -444,6 +469,27 @@ function state(){ setEnv({U:+$("U").value, phi:+$("phi").value, V:+$("V").value,
 const sideWord=r=> r<=30?"head sea, on the bow":r<=60?"on the bow quarter":r<=110?"on the BEAM"
                   :r<=160?"on the STERN QUARTER":"following, astern";
 
+/* Worst heading in the current sea — the denominator the debanded quartering pills report against.
+   Deliberately the SAME 5° sweep drawQuarterRose() draws, so a pill can never disagree with the lobe
+   the reader is looking at. Mirrors unified_map.html's t.qPeak/t.qPeakDir, which is what the map's
+   tap readout compares a course to. */
+function qSweep(comps,m,s){
+  /* ⚠ RUN ON THE UNCLAMPED Q, exactly as unified_map.html:1807-1816 does, and for the same reason:
+     Q pegs at 1.0 over a large part of the space (43.5% of a 768-config sweep post-refit, qdiag.mjs
+     §4). Scanning the CLAMPED value makes an argmax return the first sample of a flat plateau — a
+     due-north bias — and makes every pegged heading report "100% of worst", which is precisely the
+     discrimination the relative reading exists to provide. Unclamped, the pegged region still
+     separates. Exact ties are resolved by the CIRCULAR MEAN of the tied arc, so the reported worst
+     heading sits in the middle of the plateau rather than on an edge of it. */
+  const raw=t=>quarterHaz(comps,t,s.V,curToward,blockModel).Q*m;
+  let hi=-1;
+  for(let t=0;t<360;t+=5){ const q=raw(t); if(q>hi) hi=q; }
+  let sx=0, sy=0;
+  for(let t=0;t<360;t+=5){ if(raw(t)>=hi*0.999){ const r=t*Math.PI/180; sx+=Math.sin(r); sy+=Math.cos(r); } }
+  const dir=((Math.atan2(sx,sy)*180/Math.PI)%360+360)%360;
+  return {peak:hi, peakDir:Math.round(dir), raw};
+}
+
 function render(){
   const s=state();
   $("Uv").textContent=$("U").value; $("phiv").textContent=$("phi").value+"° ("+cmp(+$("phi").value)+")";
@@ -460,11 +506,22 @@ function render(){
    +`<div class="chip"><div class="name">Whitecap ${PROTO.whitecap?"ON":"off"} · Surf ${PROTO.surf?"ON":"off"}_Prototypes (experimental)</div></div>`;
   drawSchematic(s,r); drawPolar(s);
   // readout
-  const b=Math.max(0,r.band);
-  $("bandpill").textContent=BAND_WORD[b]; $("bandpill").style.background=BAND_COL[b];
-  $("bandwhy").textContent = r.band<1 ? "wind and current not steepening the sea here"
+  const b=Math.max(0,r.band), quiet=b<2;
+  // Bands 0-1 are not named (see the deband block above) — the pill says the layer has nothing to
+  // report rather than reporting "Low". The numbers below the pill still print, always.
+  /* The quiet pill switches to the NEUTRAL chip rather than filling with QUIET_COL: .bandpill is
+     white-on-fill, and white on that light slate is about 2.3:1 — unreadable. QUIET_COL stays the
+     page's "nothing reported" colour for text/strokes (it is the map's same slate), not for fills. */
+  $("bandpill").className = quiet ? "qpill" : "bandpill";
+  $("bandpill").textContent = quiet ? "not reported" : STEEP_WORD[b];
+  $("bandpill").style.background = quiet ? "" : STEEP_COL[b];
+  const why = r.band<1 ? "wind and current not steepening the sea here"
     : "opposing current is "+Math.round(r.Uopp/r.c0*4*100)+"% of the blocking speed"
       +(seaModel==="dir"?" for the governing component":"");
+  $("bandwhy").textContent = quiet
+    ? "Below the reporting threshold — read the numbers below, not this pill, and treat the water as "
+      +"unrated rather than calm ("+why+")."
+    : why;
   $("Hamp").textContent=(r.Hamp||0).toFixed(2); $("Hs").textContent=r.Hs.toFixed(2);
   $("Tp").textContent=r.Tp.toFixed(1); $("L0").textContent=(r.L0||0).toFixed(0);
   $("S").textContent=(r.S||0).toFixed(3);
@@ -487,9 +544,21 @@ function render(){
   $("qspread").dataset.deg=Math.round(sp); $("qspread").dataset.mult=m.toFixed(2);
   $("hdgv").textContent=s.hdg+"° ("+cmp(s.hdg)+")";
   $("qHlab").textContent="("+cmp(s.hdg)+")"; $("qHlab2").textContent=s.hdg+"° ("+cmp(s.hdg)+")";
+  const sweep=qSweep(r.comps,m,s);
+  $("qscale").innerHTML = sweep.peak>0
+    ? `Worst heading to be steering in this sea: <b>${cmp(sweep.peakDir)} (${sweep.peakDir}°)</b>. `
+      +`The percentages compare headings <i>within this sea</i>. Q itself is printed so you can compare `
+      +`one setting against another — but <b>not against a severity scale: its absolute value is uncalibrated</b>.`
+    // Same slate the map's tap readout uses for this exact sentence (unified_map.html:1128).
+    : `<span style="color:${QUIET_COL}">No quartering component on any heading in this sea.</span>`;
   [["qN",0,"qNwhy"],["qS",180,"qSwhy"],["qH",s.hdg,"qHwhy"]].forEach(([pid,t,wid])=>{
-    const qh=quarterHaz(r.comps,t,s.V,curToward,blockModel), qm=Math.min(1,qh.Q*m), b=qBand(qm);
-    $(pid).textContent=BAND_WORD[b]; $(pid).style.background=BAND_COL[b];
+    const qh=quarterHaz(r.comps,t,s.V,curToward,blockModel), qm=Math.min(1,qh.Q*m);
+    /* RELATIVE + the labelled index. No band word, no band colour (option (e+)).
+       The PERCENTAGE divides UNCLAMPED by UNCLAMPED (see qSweep); the Q printed beside it is the
+       CLAMPED 0…1 index, which is the map's split too — qRaw drives the comparison, qAt is shown. */
+    $(pid).textContent = sweep.peak>0
+      ? Math.round(100*(qh.Q*m)/sweep.peak)+"% of worst · Q "+qm.toFixed(2)
+      : "none on any heading";
     $(wid).textContent = qh.gov&&qm>=0.05
       ? qh.gov.Hamp.toFixed(2)+" m "+(qh.gov.b>0.6?"breaking":"steep")+" sea from "
         +cmp(qh.gov.from)+" — "+sideWord(qh.gov.r)+" ("+Math.round(qh.gov.r)+"°)"
@@ -543,9 +612,15 @@ function arrowSVG(x1,y1,x2,y2,col,w){
 function drawPolar(s){
   const W=300,H=300,cx=150,cy=152,R=112;
   let g=`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`;
-  // steepness threshold rings (S mapped 0..0.16 -> 0..R)
+  /* Steepness threshold rings (S mapped 0..0.16 -> 0..R), DEBANDED 2026-08-07 with the pills.
+     These are the band cutlines drawn in colour, so the maps' reporting pass applies here too:
+     the 0.05 ring is GONE (it was the "Low" cutline, and the Low call was removed — a ring there
+     invited reading the space inside it as a rated-calm zone), 0.075 is GREY not amber, and only
+     0.10 (High) and 0.143 (Very high) keep a warning colour. 0.143 earns its ring twice over: it
+     is also the Michell/Stokes breaking limit the metric card cites as "breaks at ≈ 0.14".
+     ⚠ The cutlines themselves are UNCHANGED — physics.js is untouched. Reporting only. */
   const Smax=0.16, sR=v=>R*Math.min(v,Smax)/Smax;
-  [[0.05,"#5b7186"],[0.075,"#f2b705"],[0.10,"#e8590c"],[0.143,"#8e1c6b"]].forEach(([v,c])=>{
+  [[0.075,STEEP_COL[2]],[0.10,STEEP_COL[3]],[0.143,STEEP_COL[4]]].forEach(([v,c])=>{
     g+=`<circle cx="${cx}" cy="${cy}" r="${sR(v)}" fill="none" stroke="${c}" stroke-dasharray="2 3" opacity=".7"/>`; });
   // compass ticks
   ["N","E","S","W"].forEach((lab,i)=>{ const br=i*90*Math.PI/180, x=cx+Math.sin(br)*(R+10), y=cy-Math.cos(br)*(R+10);
@@ -582,11 +657,23 @@ function drawPolar(s){
 function drawQuarterRose(comps,m,s){
   const W=300,H=300,cx=150,cy=152,R=112;
   let g=`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`;
-  // Q band-threshold rings (Q mapped 0..1 -> 0..R)
-  [[0.12,"#5b7186"],[0.28,"#f2b705"],[0.5,"#e8590c"],[0.75,"#8e1c6b"]].forEach(([v,c])=>{
-    g+=`<circle cx="${cx}" cy="${cy}" r="${R*v}" fill="none" stroke="${c}" stroke-dasharray="2 3" opacity=".7"/>`; });
+  /* DEBANDED 2026-08-07 (option C). These four rings USED to be the qBand cutlines (0.12/0.28/0.50/
+     0.75) drawn in the five-level band palette — the most literal rendering of the absolute Q scale
+     on this page, and the one a reader would most naturally quote ("it's inside the orange ring").
+     They are now plain quarter-scale gridlines in one neutral slate: still a ruler for the radius,
+     no longer a claim about severity. ⛔ Do not put the cutlines back. The radius itself is left
+     ABSOLUTE (unlike the map's tap rose, which normalises to the cell's own peak) because comparing
+     one dialled setting against another is what this page is for — that is a magnitude, not a band. */
+  [0.25,0.50,0.75,1.0].forEach(v=>{
+    g+=`<circle cx="${cx}" cy="${cy}" r="${R*v}" fill="none" stroke="#5b7186" stroke-dasharray="2 3" opacity=".45"/>`; });
   ["N","E","S","W"].forEach((lab,i)=>{ const br=i*90*Math.PI/180, x=cx+Math.sin(br)*(R+10), y=cy-Math.cos(br)*(R+10);
     g+=`<text x="${x}" y="${y+3}" font-size="10" fill="#94a3b8" text-anchor="middle">${lab}</text>`; });
+  /* The ring note goes ABOVE the rose, not under it: below cy+R the "your course" / "↓ S-bound" rim
+     labels already sit at ry+12, and a second caption line there overlapped them on any southerly
+     course. The band above y≈25 is empty (the N label is at y=33). It stays INSIDE the svg on
+     purpose — captureDiagramsCanvas rasterises the svg only, so a note moved to the figcaption
+     would vanish from every exported PDF image, which is the copy that can't be corrected later. */
+  g+=`<text x="${cx}" y="14" font-size="9" fill="#94a3b8" text-anchor="middle">rings 25/50/75/100% of the index — not a severity scale</text>`;
   // channel axis (vertical) for orientation
   g+=`<line x1="${cx}" y1="${cy-R}" x2="${cx}" y2="${cy+R}" stroke="#8fae9b" stroke-width="5" opacity=".25"/>`;
   // Q(t) sweep over paddler heading t
@@ -611,7 +698,10 @@ function drawQuarterRose(comps,m,s){
   const wb=s.phi*Math.PI/180;
   g+=`<text x="${cx+Math.sin(wb)*(R-12)}" y="${cy-Math.cos(wb)*(R-12)}" font-size="10" fill="#2563eb"
       font-weight="700" text-anchor="middle">wind</text>`;
-  g+=`<text x="${cx}" y="${cy+R+22}" font-size="10" fill="#667085" text-anchor="middle">radius = directional hazard for that heading</text>`;
+  // Kept SHORTER than the string it replaced ("radius = directional hazard for that heading", ~215 px
+  // wide): at a southerly course the rim labels crowd this line already, and a wider caption made a
+  // pre-existing overlap worse. ~190 px.
+  g+=`<text x="${cx}" y="${cy+R+22}" font-size="10" fill="#667085" text-anchor="middle">radius = Q for that heading — uncalibrated</text>`;
   $("qrose").innerHTML=g;
 }
 
@@ -692,11 +782,15 @@ async function captureDiagramsCanvas(){
         sea:activeSeg("seamdl"), block:activeSeg("blockmdl"),
         wind:$("U").value, dir:$("phi").value, cur:$("V").value, set:activeSeg("curdir"),
         L:$("L").value, W:$("W").value, B:$("B").value, hdg:$("hdg").value,
+        // ⚠ (e+) DEBAND, 2026-08-07: these are read from the LIVE pills, so they carry the debanded
+        // vocabulary automatically — but the EXPORTS are the copies that leave the machine and can't
+        // be recalled, so the quartering band COLOURS are gone from here too (qNCol/qSCol removed).
+        // A PDF that still shaded "Transit N" orange would publish the withdrawn scale in the one
+        // artifact nobody can update later. The steepness band keeps its colour: that band is still
+        // displayed, on the maps' reduced palette (grey Medium, no Low call).
         band:$("bandpill").textContent, bandCol:$("bandpill").style.backgroundColor,
         Hamp:$("Hamp").textContent, Tp:$("Tp").textContent, S:$("S").textContent, P:$("P").textContent,
-        qN:$("qN").textContent, qNCol:$("qN").style.backgroundColor,
-        qS:$("qS").textContent, qSCol:$("qS").style.backgroundColor,
-        qHval:$("qH").textContent,
+        qN:$("qN").textContent, qS:$("qS").textContent, qHval:$("qH").textContent,
         spread:readSpread(),
         // JPEG (not PNG) for the PDF embed: keeps a multi-snapshot PDF a reasonable download size —
         // these are flat-color diagrams, not photos, so 0.88 quality shows no visible artifacts.
@@ -712,10 +806,10 @@ async function captureDiagramsCanvas(){
       `<tr><td>${i+1}</td><td class="thumb"><img src="${r.thumb}" alt="snapshot ${i+1}"></td>`
      +`<td>${r.sea}</td><td>${r.block}</td><td>${r.wind}</td><td>${r.dir}</td><td>${r.cur}</td><td>${r.set}</td>`
      +`<td>${r.L}</td><td>${r.W}</td>`
-     +`<td style="color:#fff;background:${r.bandCol}">${r.band}</td>`
+     +`<td${r.bandCol?` style="color:#fff;background:${r.bandCol}"`:``}>${r.band}</td>`
      +`<td>${r.Hamp}</td><td>${r.Tp}</td><td>${r.S}</td><td>${r.P}</td>`
-     +`<td style="color:#fff;background:${r.qNCol}">${r.qN}</td>`
-     +`<td style="color:#fff;background:${r.qSCol}">${r.qS}</td>`
+     +`<td>${r.qN}</td>`                                  // no band fill: (e+), see recordSnapshot
+     +`<td>${r.qS}</td>`
      +`<td>${r.spread}</td><td class="del" data-i="${i}">✕</td></tr>`).join("");
   }
   body.addEventListener("click",e=>{ const td=e.target.closest("td.del"); if(!td) return;
@@ -723,7 +817,9 @@ async function captureDiagramsCanvas(){
   recordBtn.addEventListener("click",recordSnapshot);
   $("clearRowsBtn").addEventListener("click",()=>{ rows.length=0; renderRows(); });
   $("exportCsvBtn").addEventListener("click",()=>{
-    const headers=["Snapshot","Sea","Block","Wind_kt","Dir_deg","Current_kt","Set","L_km","W_km","BoatLen_m","Heading_deg","Band","Hs_w_m","Tp_s","S","P_kWm","TransitN","TransitS","YourHeadingBand","Spread","Time"];
+    // (e+): the three quartering columns now carry "<n>% of worst · Q <x.xx>", not a band word, so
+    // "YourHeadingBand" is renamed — a column header naming a band is itself the absolute claim.
+    const headers=["Snapshot","Sea","Block","Wind_kt","Dir_deg","Current_kt","Set","L_km","W_km","BoatLen_m","Heading_deg","SteepnessBand","Hs_w_m","Tp_s","S","P_kWm","TransitN_relQ","TransitS_relQ","YourHeading_relQ","Spread","Time"];
     const csvRow=vals=>vals.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
     const lines=[csvRow(headers)].concat(rows.map((r,i)=>csvRow([i+1,r.sea,r.block,r.wind,r.dir,r.cur,r.set,r.L,r.W,r.B,r.hdg,r.band,r.Hamp,r.Tp,r.S,r.P,r.qN,r.qS,r.qHval||"",r.spread,r.stamp])));
     const blob=new Blob([lines.join("\n")],{type:"text/csv"});
@@ -744,7 +840,7 @@ async function captureDiagramsCanvas(){
       pdf.text("Force Explorer — session recording",margin,margin);
       pdf.setFont("helvetica","normal"); pdf.setFontSize(9);
       pdf.text(new Date().toString()+"  ·  "+rows.length+" snapshot"+(rows.length===1?"":"s"),margin,margin+15);
-      const headers=["#","Sea","Block","Wind","Dir°","Cur kt","Set","L km","W km","Boat m","Hdg°","Band","H m","Tp s","S","P kW/m","Trans N","Trans S","Spread"];
+      const headers=["#","Sea","Block","Wind","Dir°","Cur kt","Set","L km","W km","Boat m","Hdg°","Steepness","H m","Tp s","S","P kW/m","Trans N (rel Q)","Trans S (rel Q)","Spread"];
       const colW=(pageW-2*margin)/headers.length;
       let y=margin+38;
       pdf.setFontSize(7); pdf.setFont("helvetica","bold");
@@ -757,6 +853,15 @@ async function captureDiagramsCanvas(){
         const vals=[i+1,r.sea,r.block,r.wind,r.dir,r.cur,r.set,r.L,r.W,r.B,r.hdg,r.band,r.Hamp,r.Tp,r.S,r.P,r.qN,r.qS,r.spread];
         vals.forEach((v,ci)=>pdf.text(String(v),margin+ci*colW+2,y));
       });
+      /* (e+) 2026-08-07: an exported PDF is the one copy that can't be corrected later, so it states
+         the caveat rather than relying on the reader having seen the page. Two sentences, both taken
+         from what the page itself now says. */
+      y+=20; if(y>pageH-margin){ pdf.addPage("letter","landscape"); y=margin+12; }
+      pdf.setFontSize(6.5);
+      pdf.text("Transit columns are RELATIVE: each heading as a percentage of the worst heading in that same sea, with the raw quartering index Q beside it. "
+        +"Q's absolute value is uncalibrated — compare settings with it, not against a severity scale.",margin,y);
+      y+=9;
+      pdf.text("Steepness shows nothing below Medium: unrated is not the same as calm. Wind sea only — no ocean swell.",margin,y);
       for(let i=0;i<rows.length;i++){
         const r=rows[i];
         pdf.addPage("letter","landscape");
@@ -764,7 +869,7 @@ async function captureDiagramsCanvas(){
         pdf.text("Snapshot #"+(i+1)+"  —  "+r.sea+" sea / "+r.block+" blocking",margin,margin);
         pdf.setFont("helvetica","normal"); pdf.setFontSize(9);
         pdf.text("Wind "+r.wind+" kt from "+r.dir+"°  ·  Current "+r.cur+" kt ("+r.set+")  ·  Channel "+r.L+"×"+r.W+" km  ·  Boat "+r.B+" m  ·  Your heading "+r.hdg+"°",margin,margin+15);
-        pdf.text("Steepness band: "+r.band+"   Transit N: "+r.qN+"   Transit S: "+r.qS+"   Spread: "+r.spread+"   Recorded: "+r.stamp,margin,margin+28);
+        pdf.text("Steepness: "+r.band+"   Transit N: "+r.qN+"   Transit S: "+r.qS+"   Spread: "+r.spread+"   Recorded: "+r.stamp,margin,margin+28);
         const maxW=pageW-2*margin, maxH=pageH-margin-60, ar=r.imgW/r.imgH;
         let w=maxW, h=w/ar; if(h>maxH){ h=maxH; w=h*ar; }
         pdf.addImage(r.full,"JPEG",(pageW-w)/2,margin+42,w,h);
