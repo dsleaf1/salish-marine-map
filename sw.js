@@ -17,7 +17,8 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v17";   // 2026-08-04a: Roughness layer WITHDRAWN from the public UI (disabled Layer option + note) pending WaveWatch III band revalidation; physics.js untouched
+const CACHE_VERSION = "salishmap-shell-v18";   // 2026-08-07a: base legibility under the wind fill (one base map — USGS topo — with #baseInk on the tile <img> and the contrast lift on the layer container; base selector removed), collapsible About, desktop ➤ arrows toggle, and the Roughness-layer reporting pass (Sea State / Wave Steepness / Quartering (beta), no Low ring, grey Medium, no Shaded cells, black wind arrows); physics.js untouched
+// v17 was 2026-08-04a: Roughness layer WITHDRAWN from the public UI (disabled Layer option + note) pending WaveWatch III band revalidation; physics.js untouched
 
 const SHELL = [
   "./",

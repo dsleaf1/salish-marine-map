@@ -15,18 +15,44 @@
 <link rel="stylesheet" href="vendor/leaflet.css"/>
 <style>
   :root{ --ink:#1b2430; --muted:#667085; --bg:#f5f7fa; --line:#e3e8ef;
-         /* Contrast lift for the BASE tiles only, so the coastline punches through the translucent
-            wind/current fill (David's Broughtons field report). Tunable — the ONE knob to adjust.
-            Set to `none` to disable. Applies to whichever base is active. */
-         --base-filter: contrast(1.55) brightness(0.9) saturate(1.28); }   /* "high" — David's pick 2026-08-02 */
+         /* Contrast lift for the BASE tiles only. Set to `none` to disable.
+            ⛔ It does NOT make the coastline punch through — measured, it works AGAINST it: at the
+            baked k=0.5 the land/water separation through a 70% fill is 13.1 with no lift, 8.3 at
+            "med", 4.3 at "high" (land sits above the contrast midpoint, so brightness() drags it
+            down harder than the mid-tone water), and each step also lowers the k at which water
+            clips. #baseInk carries the coastline; this lift's only job is keeping terrain and place
+            labels readable. David compared the shipping pair (k=0.5 + "med" vs the same with the
+            lift off) on his iPhone 2026-08-06 and chose "med" — the 5 luminance is a knowing trade. */
+         --base-filter: contrast(1.35) brightness(0.94) saturate(1.18);  /* "med" — David's pick 2026-08-06 */
+         /* Blue→black transform (the #baseInk feColorMatrix in <body>), kept SEPARATE from the
+            contrast lift — they are applied on DIFFERENT ELEMENTS (ink on the tile <img>, lift on the
+            layer container) because iOS Safari drops url() filters on the container and kills the
+            whole declaration, lift included, when they share one. */
+         --base-ink: url(#baseInk); }
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink);line-height:1.45}
   header{background:#0a3d62;color:#fff;padding:16px 22px}
   header h1{margin:0;font-size:20px} header p{margin:4px 0 0;font-size:13px;opacity:.92}
+  /* Intro + build history collapsed BY DEFAULT (David 2026-08-07): the paragraph is the changelog and
+     had grown to fill the screen above the map. <details> with no `open` attribute = closed on load,
+     and the state is per-visit (nothing persists it) — which is the ask: closed every time. The phone
+     one-line header hides the whole <details>, summary included (see headerDesc in the layout code). */
+  header details{margin:4px 0 0}
+  header details p{margin:6px 0 0}
+  header summary{font-size:12px;font-weight:600;opacity:.9;cursor:pointer;list-style:none;
+    display:inline-flex;align-items:center;gap:6px;padding:2px 0;min-height:24px}
+  header summary::-webkit-details-marker{display:none}   /* Safari draws its own triangle otherwise */
+  header summary::before{content:"▸";display:inline-block;transition:transform .12s linear}
+  header details[open] summary::before{transform:rotate(90deg)}
   main{max-width:1060px;margin:0 auto;padding:18px}
   .bar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
   .fld{display:flex;flex-direction:column;gap:3px}
   .fld label{font-size:12px;color:var(--muted);font-weight:600}
+  /* Base map: ONE base (USGS topo), so there is nothing for a user to choose — the control is hidden
+     on every screen (David 2026-08-07). The <select> stays in the DOM because setBase()/applyMode()/
+     ?base= all drive it; hiding it, rather than deleting it, keeps the hidden Esri-terrain comparison
+     base reachable with ?base=topo. */
+  #baseFld{display:none}
   /* Course-steer arrow: rotated by JS (transform:rotate(<course>deg)) to point in the compass
      direction of the selected heading, right next to the select showing its text/degrees. */
   .courseRow{display:flex;align-items:center;gap:8px}
@@ -38,7 +64,14 @@
   #mode{font-weight:600}
   #opacity{width:130px;margin:9px 0} #opacityVal{color:var(--ink);font-weight:700}
   /* the ± nudge buttons flanking the opacity slider are phone-only (see the media block) */
-  .oprow{display:flex;align-items:center;gap:6px} #opDown,#opUp,#arrowsTgl{display:none}
+  .oprow{display:flex;align-items:center;gap:6px} #opDown,#opUp{display:none}
+  /* ➤ On/Off hides the arrows WITHOUT losing the density you were on — it flips the Arrows select to
+     "Off" and back to the last density used. Phone-only until 2026-08-07, when David asked for the
+     same one-click hide on the desktop wind view. It is the SAME control on both screens (so they
+     can't disagree); the phone media block only grows it to a 44 px touch target. Note the Arrows
+     select still has its own "Off" — this is a shortcut to it, not a second source of truth. */
+  #arrowsTgl{display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
+  #arrowsTgl[aria-pressed="false"]{color:var(--muted);background:#eef1f5}
   /* iOS read a quick second tap on a control (the opacity ±, mostly) as double-tap-to-zoom. That
      page-zooms the fixed 100dvh phone layout, and because every pinch inside #map is captured by
      Leaflet there is then no way to pinch back out — the map looks frozen. `manipulation` drops
@@ -50,8 +83,18 @@
   #map{height:640px;border:1px solid var(--line);border-radius:12px;position:relative}
   /* stacking is owned by the "fields" pane (z 450); within it, DOM order puts arrows over the fill */
   .ovl{position:absolute;top:0;left:0;pointer-events:none}
-  /* base-tile contrast lift — scoped to the base layer's own container (className:"baseTiles" in
-     setBase), so it never touches the "labels" pane or the field/arrow canvases in "fields" */
+  /* base-tile filters — scoped to the base layer's own container (className:"baseTiles" in
+     setBase), so they never touch the "labels" pane or the field/arrow canvases in "fields".
+     ink (blue→black) runs FIRST on the raw tile, then the contrast/brightness lift on the layer.
+
+     🔑 THE TWO ARE DELIBERATELY SPLIT ACROSS TWO ELEMENTS — do NOT recombine them.
+     Measured on David's iPhone (preview-ink/inktest2.html, 2026-08-06): iOS Safari refuses to run
+     filter:url(#…) on the tile CONTAINER (cells P / REF-FAIL) but runs it fine on the tile <img>
+     itself (cell M) — and a rejected url() on the container takes the WHOLE declaration with it,
+     silently killing the contrast lift too (cell S2). So url(#baseInk) may only ever sit on
+     .leaflet-tile; the plain lift stays on the container, where it already works on his phone.
+     Transforms are NOT the cause (cell P: no transforms anywhere, still dropped). */
+  .baseTiles .leaflet-tile{filter:var(--base-ink);}
   .leaflet-layer.baseTiles{filter:var(--base-filter);}
   .legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center}
   .lchip{display:flex;align-items:center;gap:6px;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;background:#fff}
@@ -112,11 +155,11 @@
     .oprow{width:100%;gap:8px}
     #opDown,#opUp{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
          min-width:44px;min-height:44px;padding:0;font-size:20px;font-weight:700;line-height:1}
-    /* arrows on/off lives here because the Arrows density select is hidden on the phone (below);
-       it drives the SAME #arrows select, flipping between Off and the last density used */
-    #arrowsTgl{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;gap:4px;
+    /* arrows on/off matters more here because the Arrows density select is hidden on the phone
+       (below); it drives the SAME #arrows select on both screens. Phone only grows the touch
+       target — the button itself, and its pressed styling, are now global (see .oprow above). */
+    #arrowsTgl{align-items:center;justify-content:center;flex:0 0 auto;gap:4px;
          min-width:44px;min-height:44px;padding:0 8px;font-size:13px;font-weight:700;line-height:1}
-    #arrowsTgl[aria-pressed="false"]{color:var(--muted);background:#eef1f5}
     #opacity{flex:1 1 auto;width:auto;min-width:0;height:32px;margin:2px 0}
     .timewrap{flex:1 1 100%;min-width:0}
     #time{height:44px}
@@ -135,10 +178,11 @@
         box-shadow:0 1px 3px rgba(0,0,0,.3);margin-top:-11px}
     #time::-moz-range-thumb,#opacity::-moz-range-thumb{width:26px;height:26px;border-radius:50%;
         background:#0a3d62;border:2px solid #fff}
-    /* Base map + Arrows + Region are all fixed on the phone (Esri terrain / densest / navigate by
-       pinch-and-pan) — controls hidden, three fewer control rows so the map gets the screen.
-       Region was only ever a navigation shortcut: tiles load from the viewport either way. */
-    #baseFld,#arrowsFld,#regionFld,#windArrowsFld,#steepStyleFld{display:none}
+    /* Arrows + Region are fixed on the phone (densest / navigate by pinch-and-pan) — controls
+       hidden, fewer control rows so the map gets the screen. Region was only ever a navigation
+       shortcut: tiles load from the viewport either way. (Base map is hidden everywhere now — see
+       the global #baseFld rule.) */
+    #arrowsFld,#regionFld,#windArrowsFld,#steepStyleFld{display:none}
     #map{flex:1 1 240px;height:auto;min-height:180px;border-radius:8px}
     .status{flex:0 0 auto;margin:4px 0 0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .offbar{flex:0 0 auto;margin-top:6px}
@@ -162,9 +206,46 @@
 </style>
 </head>
 <body>
+<!-- Blue→black transform for the BASE tiles (2026-08-06). We can't touch the USGS palette — the tiles
+     are remote rasters — but an feColorMatrix IS a per-pixel colour transform, which is the same thing
+     applied at draw time. Each output channel subtracts k·(B−R), the "blueness" of the pixel:
+        out = C − k·(B − R)      for C in R,G,B
+     Neutral pixels (R≈B: white land, gray relief) are UNCHANGED, so only coloured features move.
+
+     NOT a coastline OUTLINE — USGS paints water as an AREA fill, so this darkens the whole water body
+     and land/water separate by TONE, with the coast reading as the boundary. It therefore follows the
+     true USGS shoreline exactly. Measured on tile 11/695/313 (2026-08-06): USGS water = rgb(203,231,255),
+     B−R = +52; land = rgb(231,241,216), B−R = −15; Esri Light Gray water is only B−R = +4, which is why
+     this transform is a near no-op on the `gray` base and USGS is the one that must stay default.
+
+     BAKED k = 0.5 (David's pick, 2026-08-06, desktop at 70% fill). Paired with --base-filter "med" that
+     yields ~8.3 luminance of land/water separation THROUGH the fill, vs 0.6 with no ink — a soft tonal
+     edge rather than a hard boundary. Reference points at the same settings: k=1 → ~15, k=2 → ~36,
+     k=2.5 → ~47. Water's darkest channel clips (and all bathymetry tinting flattens to one tone) at
+     k≈3.20 under "med"; that is the ceiling if this is ever raised. Wind-arrow contrast is NOT the
+     limit — it stays above WCAG AA out to k=4.
+
+     Side effects, both mild at k=0.5 and the reason k is tunable: warm features (red/brown roads) have
+     B<R so they lighten toward white; inland lakes and rivers darken too, being the same blue. Also
+     inherent — over water the fill now composites onto a darker base, so a given Beaufort colour reads
+     darker there than over land and no longer exactly matches its Key chip.
+
+     The matrix below IS k=0.5, written out. To re-tune, substitute k in
+     [1+k 0 −k · k 1 −k · k 0 1−k · identity alpha]. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <filter id="baseInk" color-interpolation-filters="sRGB">
+    <feColorMatrix id="baseInkMx" type="matrix" values="
+       1.5 0 -0.5 0 0
+       0.5 1 -0.5 0 0
+       0.5 0  0.5 0 0
+       0   0  0   1 0"/>
+  </filter>
+</svg>
 <header>
   <h1>HRDPS Wind and SSCOFS Current Maps</h1>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b>. <span style="opacity:.7">build 2026-08-04a (the wind-against-current <b>Roughness</b> layer is <b>temporarily withdrawn</b>: compared band for band against WaveWatch III, a peer-reviewed wave model, it reads a band <i>low</i> in the seas that matter most — where WW3 calls the water "High" the roughness layer painted "Medium" about three quarters of the time, and where WW3 called it "Low" it painted "Medium". The layer stays off until both are corrected and re-verified against WW3; the wind and current layers are unaffected and unchanged; 2026-08-02a: base legibility — the coastline and terrain now punch through the translucent wind fill (a contrast + saturation lift on the base map), the wind view defaults to the Esri terrain base, a new <b>Ocean (marine)</b> base (nautical shaded relief + bathymetry) reads especially well under the fill, and a <code>?base=</code> link parameter picks the base from a URL; 2026-07-23a: Currents: zoomed in past z10, the whole-coast overview now draws <i>alongside</i> the native mesh instead of being switched off by it — a mesh region whose bbox merely clips the corner of your view no longer blanks the modelled water everywhere else on screen (WCVI, Clayoquot to Barkley, was losing a full screen of currents to an 800 m pan), and the tap readout comes back with it; 2026-07-22l: Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → On your course now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed to Esri terrain, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  <details id="intro"><summary>About this map · what’s new</summary>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b>. <span style="opacity:.7">build 2026-08-07a (base legibility under the wind fill — one base map now, <b>USGS topo</b>, in every layer. Its water is darkened by a colour transform applied to the base tiles themselves, so land and water separate by <i>tone</i> and the coastline reads as the boundary between them even under a 70% fill; a light contrast + saturation lift keeps terrain and place names readable. The base-map selector and the alternative bases have been removed. This description is now <b>collapsed by default</b> — open it with <b>About this map</b> above. The desktop gains the <b>➤ On/Off</b> button beside Fill opacity that hides the arrows without losing the arrow density you were on (the phone has had it since 2026-07-22i). In the Roughness layer the display selector is now <b>Sea State</b> and its displays are <b>Wave Steepness</b> (was "Rings on wind") and <b>Quartering (beta)</b> (was "On your course"); the <b>Shaded cells</b> display has been removed. The <b>Low</b> call is gone from that layer: rings now start at <b>Medium</b>, and Medium draws <b>grey</b> rather than amber, so only High (orange) and Very high (magenta) read as warnings — water with no ring is <b>unrated, not calm</b>. The optional wind arrows over that display are now <b>black on a white casing</b> (they were white on a dark one). The bands themselves are unchanged: this is what the layer reports, not how it is computed; 2026-08-04a: the wind-against-current <b>Roughness</b> layer is <b>temporarily withdrawn</b>: compared band for band against WaveWatch III, a peer-reviewed wave model, it reads a band <i>low</i> in the seas that matter most — where WW3 calls the water "High" the roughness layer painted "Medium" about three quarters of the time, and where WW3 called it "Low" it painted "Medium". The layer stays off until both are corrected and re-verified against WW3; the wind and current layers are unaffected and unchanged; 2026-07-23a: Currents: zoomed in past z10, the whole-coast overview now draws <i>alongside</i> the native mesh instead of being switched off by it — a mesh region whose bbox merely clips the corner of your view no longer blanks the modelled water everywhere else on screen (WCVI, Clayoquot to Barkley, was losing a full screen of currents to an 800 m pan), and the tap readout comes back with it; 2026-07-22l: Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → the quartering display now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  </details>
 </header>
 <main>
   <div class="bar">
@@ -174,11 +255,15 @@
         <option value="wind">Wind (HRDPS 2.5 km)</option>
         <option value="steep">Roughness (wind vs current)</option>
       </select></div>
-    <div class="fld" id="steepStyleFld" style="display:none"><label for="steepStyle">Steep display</label>
-      <select id="steepStyle"><option value="rings" selected>Rings on wind</option><option value="fill">Shaded cells</option><option value="course">On your course</option></select></div>
+    <!-- Renamed 2026-08-07 (David): "Steep display" → Sea State, "Rings on wind" → Wave Steepness,
+         "On your course" → Quartering (beta). The `value=`s are UNCHANGED on purpose — they are the
+         ?st= link values, so every shared/bookmarked steep link keeps working. "Shaded cells"
+         (value="fill") was REMOVED in the same pass; ?st=fill now falls back to rings. -->
+    <div class="fld" id="steepStyleFld" style="display:none"><label for="steepStyle">Sea State</label>
+      <select id="steepStyle"><option value="rings" selected>Wave Steepness</option><option value="course">Quartering (beta)</option></select></div>
     <div class="fld" id="courseFld" style="display:none"><label for="course">Course (steer)</label>
       <div class="courseRow">
-        <select id="course" title="Shade each cell by the quartering-sea hazard for a paddler steering this heading"></select>
+        <select id="course" title="Heading used by the tap readout and the rose. The map's ticks show each cell's worst heading, whatever you steer."></select>
         <svg id="courseArrow" class="courseArrow" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
           <path d="M12 2 L12 21 M12 2 L6.5 9 M12 2 L17.5 9" stroke="var(--ink)" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
@@ -285,18 +370,68 @@ const kt = k => Math.round(k/1.852);
    caution/rough/hazardous shade. Colours escalate amber→orange→magenta (CVD-safe: no green, and not
    a red/green pair), deliberately unlike the current & wind ramps so the layer can't be mistaken. */
 const STEEP_COL=["#f2b705","#e8590c","#8e1c6b"];        // band 2 medium, 3 high, 4 very high/breaking
+/* ⚠ STEEP_LBL / STEEP_SUB have had NO live reader since the "Shaded cells" display was removed
+   2026-08-07 — they were that legend's wording. Kept, not deleted, for two reasons: they are the
+   canonical band descriptions (RING_LBL is the abbreviated form of the same three bands), and the
+   quartering legend below cites them by name as the palette it must NOT borrow. STEEP_COL is still
+   live: RING reads bands 3 and 4 from it. */
 const STEEP_LBL=["Medium — steepening chop","High — steep, short seas","Very high — breaking / near-blocking"];
 const STEEP_SUB=["wind against current builds a short, stacked sea","confused steep water; avoid in a loaded boat","wave blocking: standing, breaking seas"];
-// "Rings on wind" display: a hazard RING (colour+weight by band) with a cyan current dot+arrow, drawn
-// over the full wind fill — the original wind-map station format. Indexed by band 0..4; band 2/3/4
-// reuse STEEP_COL so the two displays share a palette. band ≤0 draws no ring (wind shows through).
+// "Wave Steepness" display: a hazard RING (colour+weight by band) with a cyan current dot+arrow, drawn
+// over the full wind fill — the original wind-map station format. Indexed by band 0..4.
+/* TWO CHANGES, David 2026-08-07:
+   1. The LOW CALL IS REMOVED. Bands 0 AND 1 now draw nothing and are never named in the readout —
+      previously band 1 drew a thin slate ring and the tap readout said "Low"/"Very low". The layer
+      now speaks only where it has something worth saying, which also shrinks what it has to be right
+      about: the WW3 comparison that withdrew this layer found it reading a band LOW, so the bands it
+      was least able to defend are the ones now silent. ⚠ The bands themselves are UNCHANGED — this
+      is a reporting change, not a physics change (physics.js is untouched).
+   2. MEDIUM IS GREY, not the old amber #f2b705. Only High (orange) and Very high (magenta) are
+      warning colours now, so the escalation reads grey → orange → magenta and a mid-band ring no
+      longer competes with the two that matter. */
+const RING_GREY="#6e747a";                              // neutral mid-grey: no hue, so it can't be
+                                                        // mistaken for the amber/orange/magenta ramp
+                                                        // nor for the cyan current dot inside it
 const RING=[null,                                       // 0 negligible → no ring
-  {col:"#5b7186",lw:2.0,a:0.55,r:8.5},                  // 1 low
-  {col:STEEP_COL[0],lw:3.5,a:0.95,r:10},               // 2 medium
-  {col:STEEP_COL[1],lw:4.5,a:0.96,r:11.5},             // 3 high
-  {col:STEEP_COL[2],lw:6.0,a:0.98,r:13}];              // 4 very high / breaking
-const RING_LBL=["","Low — slight steepening","Medium — steepening chop","High — steep, short seas","Very high — breaking / blocking"];
-const RING_WORD=["Very low","Low","Medium","High","Very high"];
+  null,                                                 // 1 low → NO ring (the "Low" call is gone)
+  {col:RING_GREY,lw:3.5,a:0.95,r:10},                   // 2 medium — grey, deliberately not a warning
+  {col:STEEP_COL[1],lw:4.5,a:0.96,r:11.5},              // 3 high
+  {col:STEEP_COL[2],lw:6.0,a:0.98,r:13}];               // 4 very high / breaking
+// Indices 0 and 1 are intentionally blank and must stay in place — band is used as the array index.
+const RING_LBL=["","","Medium — steepening chop","High — steep, short seas","Very high — breaking / blocking"];
+const RING_WORD=["","","Medium","High","Very high"];
+/* Quartering display — "Quartering (beta)", was "On your course" — OPTION 3, 2026-08-05. The cell fill there is the MEASURED
+   WIND (Beaufort ramp above); the quartering index Q contributes DIRECTION ONLY, as a magenta
+   open-headed arrow at the worst heading plus the normalised rose in the tap readout. Q's absolute
+   banding is gone: its cutlines are the single least-supported element in the model and cannot be
+   calibrated from any dataset that records heading — see Quartering_Literature_Findings.md §7 (the
+   nulls) and §11 (the decision). Magenta is used by nothing else on the map, and the arrow's head is
+   OPEN and its shaft anchored at the cell (both flow arrows are solid-headed and centred), so it can
+   never be misread as a wind or current arrow, or as a hazard band. */
+const Q_TICK="#ff2d95";
+/* DRAWING GATE for the Q arrow (David's call, 2026-08-05). Until now the arrow drew wherever the
+   model had ANY worst heading to report, which put marks on 5–8 kt water — a 10–12 cm chop, Hmax
+   about 22 cm, that no sea kayaker would call a quartering problem. Drawing there costs the whole
+   feature its credibility, so the arrow now needs a sea under it as well as a direction.
+
+   The currency is `dom Hs` — compute().Hs, the significant wind-sea height the tap readout already
+   prints, so a reader can check the mark against the number. It is deliberately NOT gateH (which is
+   Hamp·(1+0.8·fBrk), up to 1.8× the physical height, and current-ranked — it would rank a 9 kt rip
+   above a 16 kt open strait), NOT steepness (above ~14 kt the whitecap floor legitimately drives Q
+   on a flat sea, so a steepness gate deletes the strongest cases), and NOT Q itself (Q is
+   non-monotonic in wind, and a cutline on Q would re-adopt the qBand number §11 removed).
+
+   0.36 m measured on 284,780 map cell-hours (46 h × the full 6,196-cell steep mesh, 2026-08-05):
+   it is the LOWEST threshold that silences every wind row through 11 kt — the criterion was "ticks
+   must not start below 12–15 kt" — and 87% of the strong-Q marks it removes are at ≤11 kt, i.e. the
+   absurd cases, against only 13% at 12 kt and above. Coverage 21.4% → 3.8% of wet cell-hours.
+   Rayleigh Hmax ≈ 1.86 × 0.36 = 0.67 m, above the 0.55 m beam anchor in
+   Quartering_Literature_Findings.md, so the number is anchored rather than arbitrary.
+   ⚠ Because dom Hs is a FETCH-aware height, this is a wind floor that relaxes in sheltered water:
+   at 13 kt it silences ~22% of the row for want of fetch, at 16 kt only ~2%. That is intended.
+   It is a DRAWING threshold — "is there enough sea for quartering to be a question here" — and is
+   still not a severity scale; Q's radius remains uncalibrated (§11). */
+const Q_MIN_HS=0.36;
 // Directional fetch (David 2026-07-10): each steepness cell gets its own upwind open-water distance
 // per 16 compass sectors, ray-marched on the current-overview water mask at tile build. A NW blow
 // down 60 km of strait and the same wind over a 2 km cove no longer produce the same sea. Capped at
@@ -334,15 +469,16 @@ function blend(hex,overHex,a){ const c=hex2rgb(hex), w=hex2rgb(overHex);
 
 // ownLabels = the base already bakes in city/place names; when true we must NOT add the separate
 // reference-labels overlay on top (it would double the labels — Esri reference over USGS/Esri-topo).
+/* ONE base map. USGS topo is the base for every layer — it is the only one that bakes a real
+   shoreline AND has blue enough water for #baseInk to act on (B−R = +52 vs Esri gray's +4).
+   Esri terrain is kept ONLY as a hidden comparison base, for judging the ink k and the contrast
+   lift against something: it is not offered anywhere in the UI (#baseFld is display:none for
+   everyone) — reach it with ?base=topo, which updateURL() preserves across a reload.
+   Satellite, Plain coastline and Ocean (marine) were REMOVED 2026-08-07 at David's instruction:
+   one base, no menu. (Ocean carried maxNativeZoom:13; nothing left here caps below z16.) */
 const BASES={
   usgs:{name:"USGS topo",url:"https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}",attr:"USGS The National Map",ownLabels:true},
-  topo:{name:"Esri terrain",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri",ownLabels:true},
-  imagery:{name:"Satellite",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri",ownLabels:false},
-  gray:{name:"Plain coastline",url:"https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri",ownLabels:false},
-  // Esri World Ocean Base: nautical shaded relief + bathymetry with a crisp, high-contrast shoreline —
-  // reads through the translucent wind fill far better than the gray canvas or Esri terrain (David's
-  // Broughtons field report, 2026-08-02). Cached only to z13, so upscale z14-16 rather than 404 (blank).
-  ocean:{name:"Ocean (marine)",url:"https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri — Ocean",ownLabels:false,maxNativeZoom:13},
+  topo:{name:"Esri terrain",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",attr:"Tiles © Esri",ownLabels:true},   // hidden — ?base=topo only
 };
 const LABELS_URL="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
 
@@ -355,34 +491,47 @@ const MODES={
             // <1 kt is left unshaded so the terrain base reads through (and DRY discards)
             minDraw:1.0, unit:"kt", base:"usgs", labels:false, arrowFlip:0, arrowMin:0.2,
             legendOver:BASE_WATER, mesh:true },
-  // alpha defaults to 0.72 (the Fill opacity slider overrides it). Default base is Esri terrain (topo,
-  // David's pick 2026-08-02): its own coastline + labels, lifted by the base contrast filter (--base-filter,
-  // baked to "high") so the shore reads through the fill. topo bakes labels, so no reference-labels overlay.
+  // alpha defaults to 0.72 (the Fill opacity slider overrides it). Default base is USGS topo for EVERY
+  // mode (David's pick 2026-08-06, superseding the 2026-08-02 topo pick): at 0% fill neither Esri terrain
+  // nor the plain gray canvas separates water from land at overview zooms — the shore simply isn't there
+  // to lift. USGS bakes a real shoreline (and its own labels, so no reference-labels overlay), which the
+  // base contrast filter (--base-filter) then lifts through the fill.
   wind:{    label:"Wind", edges:W_EDGES, cols:W_COL, alpha:0.72,
             // paint every valid cell incl. F0 calm (matches hrdps_map.html); only DRY discards
-            minDraw:-1.0, unit:"km/h", base:"topo", labels:true, arrowFlip:180, arrowMin:1.0,
+            minDraw:-1.0, unit:"km/h", base:"usgs", labels:true, arrowFlip:180, arrowMin:1.0,
             legendOver:GRAY_LAND, mesh:false },
   // Derived hazard layer. The GL "speed" fed per cell is the BAND (2/3/4); edges map band→colour and
   // minDraw=1.5 discards bands ≤1, giving threshold-only shading. Arrows (if on) show current SET, so
   // a paddler sees which way the steep water is running. alpha 0.85: sparse, so it can sit opaque.
   steep:{   label:"Steepness", edges:[2.5,3.5], cols:STEEP_COL, alpha:0.85,
-            minDraw:1.5, unit:"band", base:"gray", labels:true, arrowFlip:0, arrowMin:0.3,
+            minDraw:1.5, unit:"band", base:"usgs", labels:true, arrowFlip:0, arrowMin:0.3,
             legendOver:GRAY_LAND, mesh:false, ringsAlpha:0.5 },   // ringsAlpha = wind-fill opacity in "rings" display
 };
 let mode="current";
-// Steepness has THREE displays: "rings" (hazard rings + current arrows over the full wind field — the
-// original wind-map format), "fill" (steepness-band-shaded cells over a plain coastline), and "course"
-// (each cell shaded by the QUARTERING-sea hazard Q for a paddler steering `course`, via physics.js's
-// quarterHaz — the directional model, separate from the steepness band; cutlines = physics.js qBand,
-// v0.4). Toggled in-mode.
-// Phone: the Steep display menu is hidden (media block, more map room) and "On your course" is the
-// permanent default there — desktop keeps "Rings on wind" and the menu to switch.
+/* Steepness has TWO displays, chosen by the "Sea State" control: "rings" (labelled Wave Steepness —
+   hazard rings + current arrows over the full wind field, the original wind-map format) and "course"
+   (labelled Quartering (beta) — via physics.js's quarterHaz, the directional model, separate from the
+   steepness band). Toggled in-mode.
+   ⚠ A THIRD display, "fill" (steepness-band-shaded cells over a plain coastline, labelled "Shaded
+   cells"), was REMOVED 2026-08-07 on David's call. The string "fill" survives ONLY as a legacy ?st=
+   alias for "rings" (setSteepStyle + the ?st= reader) so links shared before then still resolve; it is
+   no longer a reachable state, and both `steepStyle` branches below are therefore exhaustive. */
+// "course" is TWO CHANNELS as of 2026-08-05 (option 3): the fill is the measured wind (Beaufort) and Q
+// supplies direction only — see Q_TICK above. The steered `course` no longer changes anything the map
+// paints; it drives the tap readout and the rose's arm.
+// Phone: the Sea State menu is hidden (media block, more map room) and Quartering (beta) is the
+// permanent default there — desktop keeps Wave Steepness and the menu to switch.
 let steepStyle=matchMedia("(max-width:640px)").matches ? "course" : "rings";
 let course=225;                 // paddler heading (course steered), degrees; only used by the "course" display
-// In "rings", GL paints the WIND field (its ramp) and the overlay draws the rings; "fill" paints the
-// band ramp. glMode() picks the ramp; alphaRef() picks which opacity the slider/URL control.
-const glMode=()=> (mode==="steep"&&steepStyle==="rings") ? MODES.wind : MODES[mode];
-const alphaRef=()=> (mode==="steep"&&steepStyle==="rings") ? [MODES.steep,"ringsAlpha"] : [MODES[mode],"alpha"];
+// "rings" AND "course" both paint the WIND field (its ramp) with their own overlay on top — rings and
+// current arrows for one, Q ticks for the other. (The removed "fill" display painted the band ramp
+// instead; with it gone windFill() is true throughout steep mode, but the test is kept explicit rather
+// than hard-coded so re-adding a band display stays a one-line change.) glMode() picks the ramp;
+// alphaRef() picks which opacity the slider/URL control. The two wind-fill displays share ringsAlpha,
+// so switching between them keeps one fill opacity instead of jumping.
+const windFill=()=> mode==="steep" && (steepStyle==="rings"||steepStyle==="course");
+const glMode=()=> windFill() ? MODES.wind : MODES[mode];
+const alphaRef=()=> windFill() ? [MODES.steep,"ringsAlpha"] : [MODES[mode],"alpha"];
 const getAlpha=()=>{ const [o,k]=alphaRef(); return o[k]; };
 const setActiveAlpha=v=>{ const [o,k]=alphaRef(); o[k]=clampAlpha(v); };
 
@@ -425,9 +574,12 @@ for(const [p,z] of [["fields",450],["labels",460]]){
 let baseLayer=null, labelLayer=null;
 function setBase(key){
   if(baseLayer) map.removeLayer(baseLayer);
-  // className "baseTiles" scopes the contrast filter (--base-filter) to THIS layer's container only —
+  // className "baseTiles" scopes both base filters to THIS layer only — the lift (--base-filter) to the
+  // container it lands on, the ink (--base-ink) to the .leaflet-tile images inside it (they must stay on
+  // separate elements — see the CSS at the top for the iOS Safari reason).
   // labels sit in the "labels" pane and the field/arrow canvases in "fields", so neither is touched.
-  // maxNativeZoom (ocean) lets Leaflet upscale the last cached level instead of drawing blank tiles.
+  // maxNativeZoom is undefined for both remaining bases (neither caps below z16); kept so a
+  // shallow-cached base can be re-added without re-deriving why blank tiles appear past its top level.
   const b=BASES[key]; baseLayer=L.tileLayer(b.url,{maxZoom:16,maxNativeZoom:b.maxNativeZoom,attribution:b.attr,className:"baseTiles"}).addTo(map);
   // add the reference-labels overlay only when the mode wants labels AND the base has none of its own,
   // otherwise topo/USGS bases (which bake in their own labels) would show a doubled set of city names.
@@ -435,6 +587,11 @@ function setBase(key){
   if(want && !labelLayer) labelLayer=L.tileLayer(LABELS_URL,{maxZoom:16,pane:"labels"}).addTo(map);
   if(!want && labelLayer){ map.removeLayer(labelLayer); labelLayer=null; }
 }
+/* A vector coastline overlay was tried here on 2026-08-06 and REJECTED by David: Natural Earth 10m
+   at D-P tol 0.002° (≈220 m) is too coarse — it visibly departs from the real shoreline. Replaced by
+   the blue→black colour transform on the base tiles themselves (see the #baseInk SVG filter), which
+   follows the true USGS coastline exactly because it IS the USGS coastline. Don't re-propose the
+   vector overlay without a higher-resolution source (GSHHG full, OSM coastline, or CHS). */
 // two overlay canvases in the "fields" pane: WebGL (speed) + 2D (arrows, drawn over it)
 const cont=map.getPane("fields");
 const glc=document.createElement("canvas"); glc.className="ovl"; cont.appendChild(glc);
@@ -569,7 +726,8 @@ function syncClipOverview(){
   ovClip=t; return t;
 }
 function activeTiles(){
-  // steep "rings" paints the wind field (rings drawn separately in drawSteepRings); "fill" paints bands
+  // steep "rings" paints the wind field (rings drawn separately in drawSteepRings); "course" paints
+  // the wind onto the steep tile (shadeCourse) and adds Q ticks — see the steepStyle notes above
   if(mode==="steep") return steepStyle==="rings"
     ? (windTile&&windTile.ready?[windTile]:[])
     : (steepTile&&steepTile.ready?[steepTile]:[]);
@@ -618,11 +776,24 @@ function drawArrows(){
   const size=map.getSize(), dpr=window.devicePixelRatio||1;
   arc.width=size.x*dpr; arc.height=size.y*dpr; arc.style.width=size.x+"px"; arc.style.height=size.y+"px";
   const ctx=arc.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
-  const tp=+$("arrows").value; if(!tp) return;
+  let tp=+$("arrows").value; if(!tp) return;
   const md=MODES[mode];
+  // Course display draws Q TICKS instead of flow arrows: same strided lattice, different meaning —
+  // a heading to steer, not a direction something is moving. See the tick block below.
+  const qTicks = mode==="steep" && steepStyle==="course";
+  // Ticks need a THINNER lattice than flow arrows. Flow arrows are read as a field — the eye follows
+  // the streamlines, so packing them helps. A tick is read one at a time (each is a different heading
+  // for a different piece of water), and at arrow density they merge into a texture: measured at
+  // 375 px on the "Densest" phone default, where they filled the Strait edge to edge and buried the
+  // wind fill underneath. 1.7× spacing is ~3× fewer ticks and lets both channels read.
+  if(qTicks) tp*=1.7;
   const b=map.getBounds(), W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth();
   const seen=new Set();
   ctx.strokeStyle="rgba(20,20,30,.92)"; ctx.fillStyle="rgba(20,20,30,.92)"; ctx.lineWidth=1.1;
+  ctx.lineCap="round";
+  // The Q arrow's head is an OPEN chevron, so it has an apex JOIN to round off. Flow-arrow heads are
+  // filled closed paths and have no stroked join, so this is set only where it does something.
+  if(qTicks) ctx.lineJoin="round";
   const acts=activeTiles();
   for(const t of acts){
     decodeTile(t);
@@ -635,14 +806,56 @@ function drawArrows(){
     const L2=st?Math.max(4,Math.min(12,st.eff*0.42)):Math.max(4,Math.min(12,tp*0.42));
     for(let i=0;i<t.ne;i++){
       const lo=t.cx[i], la=t.cy[i]; if(lo<W||lo>E||la<S||la>N) continue;
-      const s=t.spd[i]; if(isNaN(s)||s<md.arrowMin) continue;
-      if(t.arrowGate && t.arrowGate[i]<2) continue;      // steepness: arrows only in shaded (band≥2) water
+      if(qTicks){
+        // Two independent tests, both required.
+        // (1) ENOUGH SEA: without this the arrow appears on 5–8 kt water — see Q_MIN_HS. Cheapest
+        //     test, so it runs first.
+        if(!(t.Hs[i]>=Q_MIN_HS)) continue;
+        // (2) A DIRECTION TO REPORT: a defined worst heading, and a rose non-flat enough that its
+        //     argmax isn't numerical noise. This one is NOT a hazard threshold — Q's radius stays
+        //     uncalibrated (§11); it only asks whether the model has a heading worth naming.
+        const pk=t.qPeak[i]; if(!(pk>0)) continue;
+        if(pk-t.qFloor[i] < pk*0.02) continue;
+      } else {
+        const s=t.spd[i]; if(isNaN(s)||s<md.arrowMin) continue;
+        if(t.arrowGate && t.arrowGate[i]<2) continue;    // steepness: arrows only in shaded (band≥2) water
+      }
       if(st){ const cell=t.glut?t.glut[i]:i, r=(cell/t.gcols)|0, c=cell%t.gcols;
               if(r%st.sr||c%st.sc) continue; }
       const p=map.latLngToContainerPoint([la,lo]);
       // Cross-tile overlap guard only (one tile can't collide with itself once strided).
       if(!st||acts.length>1){ const q=st?tp*0.55:tp;
         const key=((p.x/q)|0)*99999+((p.y/q)|0); if(seen.has(key)) continue; seen.add(key); }
+      if(qTicks){
+        /* Q arrow: a stub from the cell centre pointing at the WORST heading to be steering here.
+           Length is CONSTANT on purpose — Q's radius is uncalibrated (§11), so only its direction is
+           drawn, and a varying length would smuggle the magnitude scale back in.
+           ⚠ SUPERSEDES the 2026-08-05 dot mark (David's call, 2026-08-05 review). The dot existed only
+           to break the segment/reciprocal ambiguity — 070° must not read as 250° — and a head does
+           that too. The one real caution the dot was avoiding stands: EVERYWHERE ELSE on this map an
+           arrowhead means something is MOVING that way (current set, wind), and this is a course to
+           steer, not a flow. So the mark is made distinct from the flow arrows three ways at once:
+             1. the head is an OPEN CHEVRON — two strokes, no fill, and narrower (60° included) than
+                the flow arrows' 74° SOLID filled triangle;
+             2. the shaft is ANCHORED at the cell centre and grows outward ("from this water, steer
+                that way"); a flow arrow is CENTRED on its point and extends both ways;
+             3. magenta on a white casing, against the flow arrows' single near-black.
+           White casing under the magenta so it reads at both ends of the Beaufort fill, which runs
+           from near-white (F0) to near-black (F10+). */
+        const tw=t.qPeakDir[i]*Math.PI/180, dx=Math.sin(tw), dy=-Math.cos(tw);
+        const x2=p.x+dx*L2*1.25, y2=p.y+dy*L2*1.25;
+        // 2.62 rad = 150° off the shaft ⇒ a 60° included chevron; floor keeps it visible at min L2.
+        const hs=Math.max(3.2,L2*0.55), a1=tw+2.62, a2=tw-2.62;
+        const qpath=()=>{ ctx.beginPath();
+          ctx.moveTo(p.x,p.y); ctx.lineTo(x2,y2);
+          ctx.moveTo(x2+Math.sin(a1)*hs, y2-Math.cos(a1)*hs);
+          ctx.lineTo(x2,y2);
+          ctx.lineTo(x2+Math.sin(a2)*hs, y2-Math.cos(a2)*hs);
+          ctx.stroke(); };
+        ctx.strokeStyle="rgba(255,255,255,.9)"; ctx.lineWidth=3.6; qpath();
+        ctx.strokeStyle=Q_TICK; ctx.lineWidth=1.8; qpath();
+        continue;
+      }
       // Currents store TOWARD; wind stores FROM. arrowFlip turns both into "where it's going".
       const tw=(t.dir[i]+md.arrowFlip)*Math.PI/180, dx=Math.sin(tw), dy=-Math.cos(tw), x2=p.x+dx*L2, y2=p.y+dy*L2;
       ctx.beginPath(); ctx.moveTo(p.x-dx*L2,p.y-dy*L2); ctx.lineTo(x2,y2); ctx.stroke();
@@ -653,12 +866,12 @@ function drawArrows(){
 }
 function render(){ syncOverlayPos(); drawGL();
   if(mode==="steep"&&steepStyle==="rings") drawSteepRings(); else drawArrows(); }
-/* "Rings on wind": over the full wind fill, at a decimated set of protected-water cells, draw a
+/* "Wave Steepness": over the full wind fill, at a decimated set of protected-water cells, draw a
    hazard ring (colour+weight by band) with a cyan current dot+arrow — the original wind-map format.
-   Only cells with band ≥ 1 draw (where wind is steepening the current), so slack water stays clear
-   and the wind pattern shows through. Within each screen bucket the WORST band wins, so decimation
-   never hides the more dangerous cell. The Arrows control sets ring spacing; "Off" hides the current
-   arrows but keeps the rings + dots. */
+   Only cells with band ≥ 2 draw (2026-08-07: was ≥ 1 — the Low call is removed, see RING), so slack
+   and slightly-steepened water stays clear and the wind pattern shows through. Within each screen
+   bucket the WORST band wins, so decimation never hides the more dangerous cell. The Arrows control
+   sets ring spacing; "Off" hides the current arrows but keeps the rings + dots. */
 function drawSteepRings(){
   const size=map.getSize(), dpr=window.devicePixelRatio||1;
   arc.width=size.x*dpr; arc.height=size.y*dpr; arc.style.width=size.x+"px"; arc.style.height=size.y+"px";
@@ -670,7 +883,7 @@ function drawSteepRings(){
   const tp=+$("arrows").value, spacing=tp?Math.max(tp*2.4,42):50, showArrows=tp>0;
   const buck=new Map();
   for(let i=0;i<t.ne;i++){
-    const band=t.band[i]; if(band<1) continue;
+    const band=t.band[i]; if(band<2) continue;   // Low removed 2026-08-07 — RING[0] and RING[1] are null
     const lo=t.cx[i], la=t.cy[i]; if(lo<W||lo>E||la<S||la>N) continue;
     const p=map.latLngToContainerPoint([la,lo]);
     const key=((p.x/spacing)|0)*99999+((p.y/spacing)|0);
@@ -707,11 +920,16 @@ function drawWindArrowsOn(ctx){
     const key=((p.x/spacing)|0)*99999+((p.y/spacing)|0); if(seen.has(key)) continue; seen.add(key);
     const tw=(t.dir[i]+180)*Math.PI/180, dx=Math.sin(tw), dy=-Math.cos(tw);
     const x1=p.x-dx*L, y1=p.y-dy*L, x2=p.x+dx*L, y2=p.y+dy*L;
-    ctx.lineWidth=3.2; ctx.strokeStyle="rgba(20,30,45,.5)";
+    /* BLACK on a white casing (David 2026-08-07 — was white on a dark casing). The casing/core pair
+       stays: a single-colour arrow disappears into whichever Beaufort band it crosses, and these are
+       drawn over the FULL wind fill, so both a pale F1 and a dark F8 are underneath somewhere on
+       screen. Black core is the measured-safe direction — rgba(20,20,30,.92) over ink-darkened water
+       carrying the palest fill measured 5.6:1 at k=4, above WCAG AA, and the shipped k is 0.5. */
+    ctx.lineWidth=3.2; ctx.strokeStyle="rgba(255,255,255,.75)";
     ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-    ctx.lineWidth=1.5; ctx.strokeStyle="rgba(255,255,255,.96)";
+    ctx.lineWidth=1.5; ctx.strokeStyle="rgba(20,20,30,.95)";
     ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-    const a1=tw+2.6,a2=tw-2.6,hs=4.4; ctx.fillStyle="rgba(255,255,255,.96)";
+    const a1=tw+2.6,a2=tw-2.6,hs=4.4; ctx.fillStyle="rgba(20,20,30,.95)";
     ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(x2+Math.sin(a1)*hs,y2-Math.cos(a1)*hs); ctx.lineTo(x2+Math.sin(a2)*hs,y2-Math.cos(a2)*hs); ctx.closePath(); ctx.fill();
   }
 }
@@ -770,21 +988,31 @@ function refreshTip(){ if(hoverLL && tip.style.display!=="none") doHover(); }
 // Where the governing wave sits relative to the paddler (r = angle off the bow, 0…180).
 const sideWord=r=> r<=30?"head sea, on the bow":r<=60?"on the bow quarter":r<=110?"on the BEAM"
                  :r<=160?"on the STERN QUARTER":"following, astern";
-/* Mini polar Q-rose for the course hover tip: Q(heading) as a filled polar curve, concentric rings at
-   the v0.4 qBand cutlines (coloured per band), a white arm on the steered course (white dashed = the
-   return heading), a cyan tick on the current set. ISOLATED on purpose — rose-in-tip vs a side panel is
-   David's open call, so this stays one self-contained function that can be relocated whole. */
-const QCUT=[0.12,0.28,0.50,0.75];                        // v0.4 cutlines (physics.js qBand) as rose radii
+/* Mini polar Q-rose for the course tap readout: Q(heading) as a filled polar curve, NORMALISED to this
+   spot's own worst heading, plus a white arm on the steered course (white dashed = the return heading),
+   a cyan tick on the current set and a magenta tick on the worst heading.
+   OPTION 3 / §11: the rose is deliberately SHAPE-ONLY. Q's shape is the literature-grounded part (the
+   peak sits at the stern quarter, between two reconstructed capsizes at 130° and 145° — §2); its radius
+   is uncalibrated and no dataset that records heading exists to calibrate it (§7). So the rings are
+   plain relative gridlines at 25/50/75% of THIS spot's worst heading — they are NOT hazard bands, and
+   the old v0.4 qBand cutlines are gone from here. Magnitude on this panel comes from the measured wind
+   row, which is also what the cell fill shows.
+   ISOLATED on purpose — rose-in-tip vs a side panel is David's open call, so this stays one
+   self-contained function that can be relocated whole. */
+const QREL=[0.25,0.50,0.75];                             // relative gridlines, fractions of this cell's worst
 function courseRoseSVG(t,m,crs){
   const R=50, cx=62, cy=62;
+  const pk=t.qPeak[m];
+  if(!(pk>0)) return `<div style="text-align:center;opacity:.6;font-size:11px;margin-top:5px">`
+                    +`No quartering component on any heading at this spot.</div>`;
   const pt=(ang,rad)=>[cx+rad*Math.sin(ang*Math.PI/180), cy-rad*Math.cos(ang*Math.PI/180)];
   let poly="";
-  for(let i=0;i<=36;i++){ const a=i*10, q=t.qAt(m,a)||0, [x,y]=pt(a,q*R);
+  for(let i=0;i<=36;i++){ const a=i*10, q=(t.qRaw(m,a)||0)/pk, [x,y]=pt(a,q*R);
     poly+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; }
   poly+="Z";
   let rings="";
-  for(let i=0;i<QCUT.length;i++)
-    rings+=`<circle cx="${cx}" cy="${cy}" r="${(QCUT[i]*R).toFixed(1)}" fill="none" stroke="${RING[i+1].col}" stroke-width="1" opacity="0.55"/>`;
+  for(let i=0;i<QREL.length;i++)
+    rings+=`<circle cx="${cx}" cy="${cy}" r="${(QREL[i]*R).toFixed(1)}" fill="none" stroke="#5b7186" stroke-width="1" opacity="0.45"/>`;
   rings+=`<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="#9fb3c8" stroke-width="1"/>`;
   let ticks="";
   for(const [a,lbl] of [[0,"N"],[90,"E"],[180,"S"],[270,"W"]]){ const [lx,ly]=pt(a,R+8);
@@ -795,12 +1023,29 @@ function courseRoseSVG(t,m,crs){
   let cur="";
   if(t.spd[m]>=0.1){ const [sx,sy]=pt(t.dir[m],R), [s0x,s0y]=pt(t.dir[m],R-7);
     cur=`<line x1="${s0x.toFixed(1)}" y1="${s0y.toFixed(1)}" x2="${sx.toFixed(1)}" y2="${sy.toFixed(1)}" stroke="#00b4d8" stroke-width="2.4"/>`; }
+  // The worst heading, drawn the same magenta as the map tick so the two channels read as one thing.
+  // CHEVRON HEAD added 2026-08-07 (David, mockup variant B: dashed arm + chevron AT the R+2 tip).
+  // It is NOT here to disambiguate — a radial arm starting at the centre dot already reads one way
+  // only, unlike the map tick, which is why the tick carries a dot instead. It is map/rose
+  // consistency: the same magenta channel points the same way in both places. It is deliberately the
+  // ONLY headed arm in the rose (cyan set and white course have none) — those two are not headings
+  // to steer. Undashed on purpose: a dashed chevron renders ragged at this size.
+  const [wx,wy]=pt(t.qPeakDir[m],R+2);
+  const qh=t.qPeakDir[m]*Math.PI/180, ux=Math.sin(qh), uy=-Math.cos(qh);
+  const HL=6, HW=25*Math.PI/180, hc=Math.cos(HW), hs=Math.sin(HW);   // barb length + half-angle
+  const b1x=wx-HL*(ux*hc-uy*hs), b1y=wy-HL*(ux*hs+uy*hc);
+  const b2x=wx-HL*(ux*hc+uy*hs), b2y=wy-HL*(uy*hc-ux*hs);
+  const worst=`<line x1="${cx}" y1="${cy}" x2="${wx.toFixed(1)}" y2="${wy.toFixed(1)}" stroke="${Q_TICK}" stroke-width="1.4" stroke-dasharray="3 2" opacity="0.9"/>`
+             +`<polyline points="${b1x.toFixed(1)},${b1y.toFixed(1)} ${wx.toFixed(1)},${wy.toFixed(1)} ${b2x.toFixed(1)},${b2y.toFixed(1)}"`
+             +` fill="none" stroke="${Q_TICK}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>`;
   return `<svg width="124" height="124" viewBox="0 0 124 124" style="display:block;margin:5px auto 0">`
         +rings+ticks
-        +`<path d="${poly}" fill="rgba(255,45,149,0.38)" stroke="#ff2d95" stroke-width="1.6"/>`
-        +cur+arm
+        +`<path d="${poly}" fill="rgba(255,45,149,0.38)" stroke="${Q_TICK}" stroke-width="1.6"/>`
+        +worst+cur+arm
         +`<circle cx="${cx}" cy="${cy}" r="2" fill="#fff"/></svg>`
-        +`<div style="text-align:center;opacity:.6;font-size:11px">Q by heading · white = your course</div>`;
+        +`<div style="text-align:center;opacity:.6;font-size:11px;line-height:1.35">Shape only — scaled to this`
+        +` spot's worst heading; rings 25/50/75%, <i>not</i> a severity scale.`
+        +`<br>White = your course · magenta = worst · cyan = current set.</div>`;
 }
 function doHover(){
   hoverRAF=0; if(!hoverLL) return;
@@ -809,22 +1054,45 @@ function doHover(){
     decodeTile(steepTile); const t=steepTile, m=nearestCell(t,lat,lon,SNAP_DEG);
     if(m>=0 && t.wKt[m]===t.wKt[m]){                        // wet cell (not NaN)
       if(steepStyle==="course" && t.qComps && t.qComps[m]){
-        const Qc=t.qAt(m,course), bc=qBand(Qc), Qr=t.qAt(m,(course+180)%360), br=qBand(Qr), gov=t.qGov(m,course);
-        const col=bc<1?"#9fb3c8":RING[Math.min(bc,4)].col;
-        html=`<b>On course ${compass(course)} (${Math.round(snap16(course))}°) — ${RING_WORD[Math.min(bc,4)]}</b>`
-          +`<div class="hz" style="color:${col}">${bc<1?"No quartering hazard on this heading (head / following / calm)":RING_LBL[Math.min(bc,4)]} · Q ${Qc.toFixed(2)}</div>`;
+        /* No band word and no band colour here any more (§11): qBand turned an uncalibrated index
+           into "Low"/"none", which is exactly the false negative that decision removed. What is
+           reported instead is RELATIVE — where this heading sits against the worst heading at this
+           same spot — plus the raw index, explicitly labelled as uncalibrated. Absolute severity on
+           this panel comes from the measured Wind row. */
+        const pk=t.qPeak[m], gov=t.qGov(m,course);
+        const rel=h=>pk>0?Math.round(100*t.qRaw(m,h)/pk):0;
+        const relC=rel(course), Qc=t.qAt(m,course);
+        html=`<b>Steering ${compass(course)} (${Math.round(snap16(course))}°)</b>`;
+        /* Three cases, and the middle one exists so the panel never contradicts the map: below
+           Q_MIN_HS the arrow is NOT drawn, so a readout that named a worst heading as though it were
+           live would leave the reader hunting for a mark that isn't there. Say why instead, and give
+           the height so the threshold is checkable against the Wind-sea row. */
+        html+= !(pk>0)
+          ? `<div class="hz" style="color:#9fb3c8">No quartering component on any heading here.</div>`
+          : t.Hs[m]>=Q_MIN_HS
+          ? `<div class="hz" style="color:${Q_TICK}">Worst heading to be steering here: ${compass(t.qPeakDir[m])} `
+            +`(${Math.round(t.qPeakDir[m])}°) — your course is at ${relC}% of it</div>`
+          : `<div class="hz" style="color:#9fb3c8">Wind-sea ${t.Hs[m].toFixed(2)} m — under the `
+            +`${Q_MIN_HS.toFixed(2)} m the arrows need, so none is drawn here. For reference the worst `
+            +`heading would be steering ${compass(t.qPeakDir[m])} (${Math.round(t.qPeakDir[m])}°).</div>`;
         if(gov){ const brk=gov.b>=0.6?"breaking":gov.b>=0.3?"steep, near breaking":"steepening";
           html+=row("Governing sea", `${gov.Hamp.toFixed(1)} m, ${brk}, from ${compass(gov.from)} — ${sideWord(gov.r)}`);
           if(gov.en>1.08) html+=`<div class="hz" style="color:${RING[4].col}">surf-driving the stern (broach risk)</div>`; }
-        html+=row("On return", `${compass((course+180)%360)} — ${RING_WORD[Math.min(br,4)]} · Q ${Qr.toFixed(2)}`)
+        html+=row("On return", `steering ${compass((course+180)%360)} — ${rel((course+180)%360)}% of the worst heading`)
           +row("Wind", `${Math.round(t.wKt[m])} kt from ${compass(t.wFrom[m])}`)
           +row("Current", t.spd[m]>=0.1?`${t.spd[m].toFixed(1)} kt toward ${compass(t.dir[m])}`:"slack (&lt;0.1 kt)");
         if(t.qm[m]>1.02) html+=row("Confused sea", `×${t.qm[m].toFixed(2)} (short-crested — no single brace side)`);
+        // The index itself, kept but labelled — option (e) is "label rather than calibrate", not "hide".
+        html+=`<div style="opacity:.55;font-size:11px;margin-top:3px">quartering index Q ${Qc.toFixed(2)} `
+             +`— compare headings and spots with it, not against a severity scale: its absolute value is uncalibrated.</div>`;
         html+=courseRoseSVG(t,m,course);
       } else {
-      const band=Math.max(0,t.band[m]|0), col=band<1?"#9fb3c8":RING[Math.min(band,4)].col;
-      html=`<b>Roughness — ${RING_WORD[Math.min(band,4)]}</b>`
-        +`<div class="hz" style="color:${col}">${band<1?"No steepening (calm / following sea)":RING_LBL[Math.min(band,4)]}</div>`
+      // Bands 0–1 are no longer NAMED (the Low call was removed 2026-08-07): below band 2 the readout
+      // says the layer has nothing to report rather than reporting "Low", which read as a reassurance.
+      // The wind / current / wind-sea / fetch numbers below still print — the tap is never empty.
+      const band=Math.max(0,t.band[m]|0), quiet=band<2, col=quiet?"#9fb3c8":RING[Math.min(band,4)].col;
+      html=`<b>Roughness — ${quiet?"nothing reported here":RING_WORD[Math.min(band,4)]}</b>`
+        +`<div class="hz" style="color:${col}">${quiet?"Below the layer's reporting threshold — read the numbers below, not this line, and treat it as unrated rather than calm":RING_LBL[Math.min(band,4)]}</div>`
         +row("Wind", `${Math.round(t.wKt[m])} kt from ${compass(t.wFrom[m])} (${Math.round(t.wFrom[m])}°)`)
         +row("Current", t.spd[m]>=0.1?`${t.spd[m].toFixed(1)} kt toward ${compass(t.dir[m])} (${Math.round(t.dir[m])}°)`:"slack (&lt;0.1 kt)")
         +row("Wind-sea", t.Hs[m]>0.05?`${t.Hs[m].toFixed(1)} m @ ${t.Tp[m].toFixed(1)} s`:"negligible")
@@ -1400,18 +1668,22 @@ async function loadSteepOnce(){
       t.band[m]=sc.band;
       setQuad(t.spd3,m, sc.band<1.5?DRY:sc.band);                  // bands ≤1 discarded (threshold-only)
     }
-    if(steepStyle==="course"){ t.buildQuarter(); t.shadeCourse(); t.arrowGate=t.cband; } // Q-bands overwrite spd3
+    if(steepStyle==="course"){ t.buildQuarter(); t.shadeCourse(); t.arrowGate=null; } // wind overwrites spd3; ticks gate on qPeak
     else t.arrowGate=t.band;
   };
   /* ---- Quartering-sea (course) display ------------------------------------------------------
-     Each cell shaded by the directional hazard Q for a paddler steering `course`, via physics.js's
-     quarterHaz over the SAME ±80°/10° wind-sea fan the steepness layer fans (10° step: q is smoother
-     than the band, so the 5° steepness step isn't needed — see task_quartering_display_port). Cutlines
-     = physics.js qBand (v0.4, DECIDED 2026-07-17). compEnv (the per-component running-max envelope over
-     opposing current) dominates the cost and is COURSE-INDEPENDENT, so it is built once per decoded hour
-     (t.qHour) and course scrubbing is a cheap re-band. Measured on this view: ~1.2 s to build 6,196
-     cells' envelopes, ~6 ms to re-shade a new course. */
-  t.qHour=-1; t.qComps=null; t.qm=new Float32Array(ne); t.cband=new Float32Array(ne);
+     The directional hazard Q, via physics.js's quarterHaz over the SAME ±80°/10° wind-sea fan the
+     steepness layer fans (10° step: q is smoother than the band, so the 5° steepness step isn't
+     needed — see task_quartering_display_port).
+     OPTION 3 (2026-08-05): Q is no longer banded or painted. The fill is wind; Q appears as the
+     WORST HEADING (tick + rose). Both the worst heading and the envelopes are COURSE-INDEPENDENT, so
+     everything here is built once per decoded hour (t.qHour) and changing course costs nothing at all.
+     Measured on this view: ~1.2 s to build 6,196 cells' envelopes. */
+  t.qHour=-1; t.qComps=null; t.qm=new Float32Array(ne);
+  // Worst-heading scan results, per cell, for the decoded hour.
+  t.qPeak=new Float32Array(ne);      // Q at the worst heading, UNCLAMPED (see t.qRaw)
+  t.qFloor=new Float32Array(ne);     // Q at the best heading — with qPeak, the rose's swing
+  t.qPeakDir=new Float32Array(ne);   // that worst heading, degrees true (a course to steer)
   t.buildQuarter=()=>{                   // per-cell comps + spread multiplier for the decoded hour
     if(t.qHour===t.decodedHour && t.qComps) return;
     setStatus("Computing course hazard ("+ne.toLocaleString()+" cells)…");
@@ -1429,19 +1701,45 @@ async function loadSteepOnce(){
       comps[m]=cs; t.qm[m]=qMult(confusedSpread(cs));
     }
     t.qComps=comps; t.qHour=t.decodedHour;
+    /* Worst-heading scan. 10° step = the tap rose's own resolution, so tick and rose agree exactly.
+       Run on the UNCLAMPED Q on purpose: Q pegs at 1.0 over a large part of the domain (43.5% of a
+       768-config sweep post-refit, qdiag.mjs §4), and an argmax over a clipped plateau would just
+       return the plateau's first sample — a due-north bias. Unclamped, the pegged region still
+       discriminates (it spreads over 1.00–1.30). Exact ties left over are resolved by taking the
+       CIRCULAR MEAN of the tied arc, which centres the tick on the plateau instead of picking an
+       edge of it. */
+    for(let m=0;m<ne;m++){
+      if(!comps[m]){ t.qPeak[m]=NaN; t.qFloor[m]=NaN; t.qPeakDir[m]=NaN; continue; }
+      let hi=-1, lo=Infinity;
+      for(let a=0;a<360;a+=10){ const q=t.qRaw(m,a);
+        if(q>hi) hi=q; if(q<lo) lo=q; }
+      let sx=0, sy=0;
+      for(let a=0;a<360;a+=10){ if(t.qRaw(m,a) >= hi*0.999){ const r=a*Math.PI/180; sx+=Math.sin(r); sy+=Math.cos(r); } }
+      t.qPeak[m]=hi; t.qFloor[m]=lo;
+      t.qPeakDir[m]=((Math.atan2(sx,sy)*180/Math.PI)%360+360)%360;
+    }
     setStatus(loadedSummary());
   };
   // Q for one cell on an arbitrary heading, reusing the cached per-component envelope (quarterHaz
   // memoizes c._env on the comp objects — valid because current+model are fixed for the hour's set).
-  t.qAt=(m,hdg)=>{ const cs=t.qComps&&t.qComps[m]; if(!cs) return NaN;
-    return Math.min(1, quarterHaz(cs,hdg,t.spd[m],t.dir[m],"spec").Q * t.qm[m]); };
+  // qRaw is unclamped (the worst-heading scan needs it); qAt is the clamped 0…1 index shown to a user.
+  t.qRaw=(m,hdg)=>{ const cs=t.qComps&&t.qComps[m]; if(!cs) return NaN;
+    return quarterHaz(cs,hdg,t.spd[m],t.dir[m],"spec").Q * t.qm[m]; };
+  t.qAt=(m,hdg)=>Math.min(1, t.qRaw(m,hdg));
   t.qGov=(m,hdg)=>{ const cs=t.qComps&&t.qComps[m]; if(!cs) return null;
     return quarterHaz(cs,hdg,t.spd[m],t.dir[m],"spec").gov; };
-  t.shadeCourse=()=>{                    // write course-Q bands into cband + the GL buffer (spd3)
-    for(let m=0;m<ne;m++){ const cs=t.qComps&&t.qComps[m];
-      if(!cs){ t.cband[m]=-1; setQuad(t.spd3,m,DRY); continue; }
-      const b=qBand(t.qAt(m,course)); t.cband[m]=b;
-      setQuad(t.spd3,m, b<1.5?DRY:b); }                            // bands ≤1 discarded, matching "fill"
+  /* OPTION 3: the fill in course mode is the MEASURED WIND, in the wind ramp's own unit (km/h, so
+     W_EDGES bins it as Beaufort — glMode() has already pushed that ramp). This is a re-point of an
+     already-decoded field, not a new data path. It replaces the old qBand fill, which converted an
+     uncalibrated index into a five-level hazard scale; §11 removed that scale, and Q now reaches the
+     screen only as direction (the ticks in drawArrows and the rose in the tap readout).
+     Reverting is one line: setQuad(t.spd3, m, b<1.5?DRY:b) with b=qBand(t.qAt(m,course)) — qBand is
+     still exported by physics.js for the harnesses.
+     Note the footprint is unchanged: these are the STEEP_ZONES cells, so the wind fill appears only in
+     the protected water the quartering model is claimed over, never the open coast. */
+  t.shadeCourse=()=>{
+    for(let m=0;m<ne;m++){ const w=t.wKt[m];
+      setQuad(t.spd3, m, w===w ? w*1.852 : DRY); }                 // NaN = dry; kt → km/h
   };
   t.arrowGate=t.band;                    // draw arrows only where the water is actually shaded (band≥2)
   t.fetchKm=fetchKm;                     // kept for hover readout / verification
@@ -1480,33 +1778,58 @@ function buildLegend(){
     s=`<span class="lchip" style="font-weight:600"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(md.alpha);
   } else if(steepStyle==="rings"){
     // rings drawn as an open circle (coloured border); fill behind = wind (Beaufort)
-    s='<span class="lchip" style="font-weight:600">Roughness rings · fill = wind:</span>';
-    for(let bnd=1;bnd<=4;bnd++)
+    s='<span class="lchip" style="font-weight:600">Wave steepness · fill = wind:</span>';
+    for(let bnd=2;bnd<=4;bnd++)   // from 2: the Low ring was removed 2026-08-07 (RING[1] is null)
       s+=`<span class="lchip"><i class="lsw" style="border:3px solid ${RING[bnd].col};background:transparent;border-radius:50%"></i>${RING_LBL[bnd]}</span>`;
     s+=`<span class="lchip"><i class="lsw" style="border-radius:50%;background:#00b4d8;border-color:#023047"></i>current set (arrow)</span>`;
+    /* The low band draws nothing at all now, so "no ring" covers MORE water than it used to and the
+       silence has to be stated — same reason the out-of-zone tap readout exists. Keep the whole
+       sentence in ONE .lchip span: .lchip is display:flex, so a nested ELEMENT becomes its own flex
+       item and the sentence breaks into columns (learned the hard way on the quartering legend). */
+    s+=`<span class="lchip" style="opacity:.6"><span><b>No ring is not calm:</b> rings start at Medium`
+      +` — the layer no longer reports a Low band. Unringed water is unrated here, not flat.</span></span>`;
     // With wind arrows on, decode the fill's wind-speed colours inline (Beaufort key at the fill alpha)
     if($("windArrows").checked)
       s+=`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(getAlpha());
     else
       s+=`<span class="lchip" style="opacity:.6">coloured fill = wind (Beaufort — see Wind layer)</span>`;
-  } else if(steepStyle==="course"){
-    const nm=COMPASS[Math.round(((course%360)+360)%360/22.5)%16];
-    s=`<span class="lchip" style="font-weight:600">Quartering-sea risk steering ${nm} (${Math.round(snap16(course))}°):</span>`;
-    for(let i=0;i<STEEP_COL.length;i++)
-      s+=`<span class="lchip" title="${STEEP_SUB[i]}"><i class="lsw" style="background:${blend(STEEP_COL[i],GRAY_LAND,md.alpha)}"></i>${STEEP_LBL[i]}</span>`;
-    s+=`<span class="lchip" style="opacity:.6">roughness for a paddler on this heading · calm / head / following-only seas: unshaded</span>`;
-  } else {
-    s='<span class="lchip" style="font-weight:600" title="Probability of increasing roughness from opposing wind/current or quartering seas">Probability of increasing roughness (protected waters):</span>';
-    for(let i=0;i<STEEP_COL.length;i++)
-      s+=`<span class="lchip" title="${STEEP_SUB[i]}"><i class="lsw" style="background:${blend(STEEP_COL[i],GRAY_LAND,md.alpha)}"></i>${STEEP_LBL[i]}</span>`;
-    s+=`<span class="lchip" style="opacity:.6">calm / following seas: unshaded</span>`;
+  } else {   // "course" — the only other Sea State display since "fill" was removed 2026-08-07
+    /* OPTION 3 — two channels, and the words must keep them apart. STEEP_COL / STEEP_LBL / STEEP_SUB
+       are the STEEPNESS layer's palette and wording; reusing them here would present Q on a severity
+       scale, which is precisely what §11 removed. The fill is measured wind; the tick is direction. */
+    s='<span class="lchip" style="font-weight:600">Quartering seas · fill = wind:</span>'
+     // Swatch = a picture of the mark drawArrows draws: anchored shaft + OPEN chevron, white casing
+     // under magenta. Keep the two in step — this is the only place a reader learns to read it.
+     +`<span class="lchip"><svg width="16" height="16" style="vertical-align:-3px;margin-right:5px">`
+     +`<path d="M8 14 L8 4 M6 7.5 L8 4 L10 7.5" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>`
+     +`<path d="M8 14 L8 4 M6 7.5 L8 4 L10 7.5" fill="none" stroke="${Q_TICK}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`
+     +`</svg>arrow = worst heading to be steering</span>`
+     +`<span class="lchip" style="opacity:.6">open head, and it grows OUT of the cell — it is a course to steer, not a flow.`
+     +` It shows DIRECTION only: the quartering index has no calibrated severity scale, so the colour you`
+     +` see is the wind. Tap any cell for its shape rose.</span>`
+     /* The gate has to be stated, or its silence is read as "safe". It is a threshold on SEA SIZE —
+        the same wind-sea height the tap readout prints — not a severity rating, and because that
+        height is fetch-aware it can stay quiet in a sheltered pocket while the water beyond it ticks
+        at the same wind. Say both halves; the second is the one a reader would otherwise get wrong. */
+     // ⚠ .lchip is display:flex, so any ELEMENT inside becomes its own flex item and the sentence
+     //   breaks into columns. Keep the whole sentence in ONE span (the <b>s then nest inside it).
+     +`<span class="lchip" style="opacity:.6"><span>Arrows are drawn only where the wind-sea reaches`
+     +` <b>${Q_MIN_HS.toFixed(2)} m</b> (about 1¼ ft) — below that there is too little sea for quartering`
+     +` to be a question. <b>No arrow does not mean calm:</b> it means the sea here is under that height,`
+     +` which in a sheltered pocket can happen at the same wind that ticks in open water. Tap for the number.</span></span>`
+     +`<span class="lchip" style="opacity:.6">Course (steer) sets the heading in the tap readout; the arrows are the worst heading either way.</span>`
+     +`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`
+     +beaufortKey(getAlpha());
   }
+  /* There is no `else` any more: "Shaded cells" (steepStyle "fill") was REMOVED 2026-08-07 (David),
+     so steepStyle is only ever "rings" or "course" and the two branches above are exhaustive.
+     setSteepStyle() and the ?st= reader both enforce that, mapping the legacy "fill" onto "rings". */
   $("legend").innerHTML=s;
 }
 const NOTES={
   current:"Covers Puget Sound → Queen Charlotte Sound (south edge — <b>Haida Gwaii is outside SSCOFS</b>). Zoomed out: whole-coast ~2 km overview; zoom in (≥ z10): native FVCOM mesh tiles (~40–90 m in narrows) load automatically for the water in view. Arrows show <b>set</b> (where the water goes). SSCOFS is a model — official CHS/NOAA predictions remain authoritative at the tightest narrows.",
-  wind:"HRDPS 2.5 km whole-extent field, one resolution at every zoom (there is no finer wind tile). Arrows point <b>downwind</b> (the model stores the direction the wind blows <i>from</i>). Wind is drawn over land as well as water; place names and coastline are drawn on top. Beaufort bins match the standalone wind map exactly.",
-  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. <b>Rings on wind</b> shows the full HRDPS wind field with a roughness ring + cyan current arrow wherever the current is steepening the sea; <b>Shaded cells</b> paints the bands over a plain coastline (switch with <b>Steep display</b>). Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
+  wind:"HRDPS 2.5 km whole-extent field, one resolution at every zoom (there is no finer wind tile). Arrows point <b>downwind</b> (the model stores the direction the wind blows <i>from</i>). Wind is drawn over land as well as water, so read the fill only where there is water — the base map shows through it rather than being overdrawn, and land reads lighter than water. Beaufort bins match the standalone wind map exactly.",
+  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. Two displays, switched with <b>Sea State</b>: <b>Wave Steepness</b> draws the full HRDPS wind field with a ring + cyan current arrow wherever the current is steepening the sea, from <b>Medium</b> upward — there is no Low ring, so unringed water is <b>unrated, not calm</b>; <b>Quartering (beta)</b> marks the worst heading to be steering, direction only. Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
 };
 // Per-mode hint, plus the roughness withdrawal notice while the layer is off. It rides along under
 // every mode on purpose: NOTES.steep is unreachable once the option is disabled, so this is the only
@@ -1514,9 +1837,9 @@ const NOTES={
 function setNote(){ $("note").innerHTML = NOTES[mode] + (STEEP_ON ? "" : STEEP_WITHDRAWN_NOTE); }
 function buildBaseSelect(){
   const md=MODES[mode], sel=$("base");
-  // currents lead with USGS topo; wind & steepness lead with Esri terrain (the wind default), then the
-  // marine Ocean base and the plain gray canvas as alternatives.
-  let order = (mode==="current") ? ["usgs","ocean","topo","imagery"] : ["topo","ocean","gray","imagery"];
+  // The <select> is never shown (#baseFld is display:none for everyone, 2026-08-07) — it survives only
+  // as the plumbing setBase()/?base= drive. USGS for every mode; Esri terrain is the hidden comparison.
+  let order = ["usgs","topo"];
   const cur = basePref[mode]||md.base;
   if(!order.includes(cur)) order=[cur,...order];   // an explicit ?base= (or pinned) choice is always selectable
   sel.innerHTML="";
@@ -1574,24 +1897,20 @@ function ensureLayer(){
   setStatus(loadedSummary());
 }
 function setSteepStyle(v){
-  if(v===steepStyle || (v!=="rings"&&v!=="fill"&&v!=="course")) return;
+  if(v==="fill") v="rings";                 // "Shaded cells" removed 2026-08-07 — legacy ?st=fill links
+  if(v===steepStyle || (v!=="rings"&&v!=="course")) return;
   steepStyle=v;
   if(steepTile) steepTile.decodedHour=-1;   // spd3 holds different bands per display → force a re-decode
   updateSteepControls();
   applyModeGL(); syncOpacityUI(); buildLegend(); render(); updateURL();
   refreshTip();                             // rings/shaded/course readouts differ — refresh in place
 }
-// Course change: the envelope layer (t.buildQuarter) is course-independent and already built for the
-// hour, so this is just a cheap re-band (shadeCourse) + GL re-upload — no envelope recompute.
+// Course change: under option 3 NOTHING the map paints depends on the steered course — the fill is
+// wind and the ticks are the worst heading, both course-independent. So there is no re-shade and no GL
+// re-upload here at all; only the readout, the rose's arm, the legend and the URL move.
 function setCourse(deg){
   course=((+deg%360)+360)%360;
-  if(mode==="steep"&&steepStyle==="course"&&steepTile&&steepTile.ready){
-    decodeTile(steepTile);                  // no-op if the hour is already decoded (buildQuarter cached)
-    steepTile.shadeCourse();
-    if(gl){ gl.bindBuffer(gl.ARRAY_BUFFER,steepTile.spdBuf); gl.bufferData(gl.ARRAY_BUFFER,steepTile.spd3,gl.DYNAMIC_DRAW); }
-    render();
-  }
-  buildLegend(); updateURL(); refreshTip();   // heading changed → update Q-rose + governing-sea lines
+  buildLegend(); updateURL(); refreshTip();   // heading changed → update Q-rose arm + governing-sea lines
   updateCourseArrow();
 }
 function setMode(next){
@@ -1685,17 +2004,20 @@ if(!STEEP_ON){ const o=$("mode").querySelector('option[value="steep"]');
   o.disabled=true; o.textContent=STEEP_WITHDRAWN_OPT; }
 { const q=new URLSearchParams(location.search), m=q.get("mode");
   if(m && MODES[m] && !(m==="steep"&&!STEEP_ON)) mode=m;
-  const st=q.get("st"); if(st==="rings"||st==="fill"||st==="course") steepStyle=st;   // before applyMode/alphaRef
+  // ?st= before applyMode/alphaRef. "fill" (Shaded cells) was removed 2026-08-07 but is still honoured
+  // as an alias for "rings" so links shared before then land on a display that exists.
+  const st=q.get("st"); if(st==="rings"||st==="fill") steepStyle="rings"; else if(st==="course") steepStyle="course";
   const co=parseFloat(q.get("course")); if(isFinite(co)) course=((co%360)+360)%360;
   $("mode").value=mode;
   const a=parseFloat(q.get("a"));                  // applies to the URL's mode+display (see updateURL)
   if(isFinite(a)) setActiveAlpha(a); }
 updateSteepControls();
-// Phone: the Base map + Arrows controls are hidden (media block) — pin their values instead:
-// Esri terrain for every layer, densest arrow spacing (David's picks, 2026-07-22).
+// Phone: the Arrows control is hidden (media block) — pin its value instead: densest arrow spacing
+// (David's pick, 2026-07-22). The base pin below is now belt-and-braces: USGS is the default for
+// every mode and the Base control is hidden on all screens, so the two can no longer disagree.
 if(matchMedia("(max-width:640px)").matches){
-  basePref.current=basePref.wind=basePref.steep="topo"; $("arrows").value="12";
-  // Phone: shorter Layer option text (Steep display menu is hidden — the compact "beta" note
+  basePref.current=basePref.wind=basePref.steep="usgs"; $("arrows").value="12";
+  // Phone: shorter Layer option text (the Sea State menu is hidden — the compact "beta" note
   // stands in for it). Desktop keeps the fuller labels.
   const modeSel=$("mode");
   modeSel.querySelector('option[value="current"]').textContent="Currents";
@@ -1705,11 +2027,22 @@ if(matchMedia("(max-width:640px)").matches){
   modeSel.querySelector('option[value="steep"]').textContent =
     STEEP_ON ? "Roughness (beta)" : STEEP_WITHDRAWN_PHONE;
 }
-// ?base= overrides the default/pinned base for the URL's mode. Read AFTER the phone pin so it wins on
-// phone too, where the Base dropdown is hidden — lets a phone compare bases by swapping the URL (David's
-// Broughtons contrast test). Unknown keys ignored (fall back to the pinned/default base).
+// ?base= overrides the default base for the URL's mode. Read AFTER the phone pin so it wins there too.
+// Now that the Base control is hidden on every screen this is the ONLY route to the Esri-terrain
+// comparison base — ?base=topo, on the phone or the desktop. updateURL() carries it (unlike ink=/
+// filter=), so it survives a reload. Unknown keys ignored (fall back to the default base).
 { const bkey=new URLSearchParams(location.search).get("base");
   if(bkey && BASES[bkey]) basePref[mode]=bkey; }
+
+/* The two temporary tuning knobs `?ink=` (the #baseInk k) and `?filter=` (--base-filter) lived here
+   from 2026-08-06 and were DELETED before this deploy, as always intended — both values are settled
+   and baked (k=0.5 in the matrix in <body>, "med" in :root) after David judged them on his iPhone.
+   A copy of the knobs survives on the preview page (salish 500d211, preview-ink/compare.html) if the
+   values ever need re-tuning from a phone. Presets the knob carried, for reference:
+     off none · low contrast(1.20) brightness(0.97) saturate(1.10) · med (baked) contrast(1.35)
+     brightness(0.94) saturate(1.18) · high contrast(1.55) brightness(0.90) saturate(1.28) ·
+     xhigh contrast(1.80) brightness(0.86) saturate(1.40) · max contrast(2.10) brightness(0.82) saturate(1.50)
+   The ink matrix at k is: [1+k 0 −k · k 1 −k · k 0 1−k · identity alpha]. */
 rememberTp(); syncArrowsTgl();
 syncOpacityUI(); buildLegend(); buildBaseSelect(); setBase($("base").value); setNote();
 
@@ -1726,7 +2059,9 @@ legendBtn.onclick=()=>{ const open=$("legend").classList.toggle("open"); legendB
 // the overlay lives inside the map container: keep its taps/scrolls from panning the map under it
 L.DomEvent.disableClickPropagation(legendBtn);
 L.DomEvent.disableClickPropagation($("legend")); L.DomEvent.disableScrollPropagation($("legend"));
-const headerDesc=document.querySelector("header p");
+// The blurb now lives inside a collapsed <details> (2026-08-07). Hide the WRAPPER, not the <p> —
+// hiding the <p> alone would leave the "About this map" summary line on the one-line phone header.
+const headerDesc=document.querySelector("header details")||document.querySelector("header p");
 let mobileApplied=null;                                 // guard: only touch the DOM on a real crossing
 window.mobileLayout=function(){
   const on=mobileMQ.matches; if(on===mobileApplied) return; mobileApplied=on;
