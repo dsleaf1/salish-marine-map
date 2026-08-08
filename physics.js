@@ -20,7 +20,16 @@
      reads the DOM.
    ANCHOR-PERTURBATION NOTE: force_sensitivity.mjs's "anchors" stage string-patches THIS source
    (QW_ANCH rows, whitecap ramp, surf amplifier, qBand cutlines, consequence gate). Keep those
-   expressions textually stable, or update its PATCHES table in the same commit. */
+   expressions textually stable, or update its PATCHES table in the same commit.
+
+   NO LONGER VERBATIM: windSea() was REFITTED on 2026-08-04 against SalishSeaCast WaveWatch III and
+   relaxSea() was added (Job 2 — Wave_Layer_Discrepancy_Handoff.md, wave_validation/RESULTS.md §10).
+   Everything else is still the 2026-07-16 extraction. This breaks modelHash (was 3e07c2026658),
+   which David authorised. ⚠ THIS FILE EXISTS IN TWO BYTE-IDENTICAL COPIES — cape_st_james/physics.js
+   and salish-marine-map/physics.js — and fe_api.mjs's FILE points at the SALISH one. Change both
+   together. The salish copy is also a DEPLOYED, service-worker-cached asset (sw.js caches
+   ./physics.js), so it must not be pushed without a CACHE_VERSION bump, even though the roughness
+   layer that consumes these waves is currently withdrawn and nothing user-visible depends on it. */
 const ENV={U:15, phi:20, V:1.2, L:16, W:6, B:5, hdg:180};
 function setEnv(o){ for(const k in o) if(k in ENV && o[k]!=null && isFinite(+o[k])) ENV[k]=+o[k]; }
 /* EXPERIMENTAL PROTOTYPE toggles (David's 2026-07-17 decision): the whitecapping floor and the
@@ -35,10 +44,84 @@ const PROTO={whitecap:true, surf:true};
 function envState(){ return {U:ENV.U*KT, phi:ENV.phi, V:ENV.V, L:ENV.L, W:ENV.W, B:ENV.B, hdg:ENV.hdg}; }
 
 const G=9.81, KT=0.514444, RHO=1025;
-// --- physics (same core as the map) ---
+/* --- WIND SEA (same core as the map) -----------------------------------------------------------
+   REFITTED 2026-08-04 (Job 2; wave_validation/RESULTS.md §10, params wave_validation/fit4_params.json).
+   The previous law was SPM/Pierson-Moskowitz with the OPEN-OCEAN saturation coefficient 0.24. Against
+   604 winter days of SalishSeaCast WaveWatch III at three Strait of Georgia stations (260,928 samples)
+   that law read Hs 1.48× high in the median and its wind response was far too flat, because 0.24 is
+   roughly 3× the coefficient a fetch-limited basin like this one actually supports: A = Hs·g/U²
+   measures 0.078 at Halibut Bank and 0.087 at Sentry Shoal off that archive, against Gemmrich &
+   Pawlowicz (2020)'s published 0.07 / 0.09 for the same two buoys.
+
+   TWO CONSTANTS ARE TAKEN FROM THE LITERATURE, NOT FITTED — pinning them IMPROVED the fit
+   (train 0.05628 vs 0.05659 fully unconstrained), so they cost nothing and buy the whole argument:
+     mh = 0.50  SPM's fetch exponent (the free fit chose 0.501, so the fetch law keeps its published
+                form and only the WIND response changes).
+     Ah = 0.09  Gemmrich & Pawlowicz's saturation coefficient for this basin — the HIGHER of their two
+                buoy values, which is the conservative choice: it caps Hs later, so it under-warns less.
+
+   dh IS A DEPARTURE FROM SIMILARITY, written explicitly so the deviation is visible rather than hidden
+   inside a refitted fetch exponent. Kitaigorodskii scaling says the nondimensional height Hs·g/U² is a
+   function of X = gF/U² alone, which LOCKS a + 2b = 2. WW3 measures a + 2b ≈ 2.5 in this basin
+   (Hs ∝ U^1.90·F^0.30, and it survives restricting to steady seas at their peak, so it is not a
+   duration artefact) — so the similarity lock is what has to give. dh = 0 IS similarity; the wind
+   exponent is a = 2 − 2·mh + dh, here 1.66 once the Ah cap binds.
+
+   Ucap — HIGH-WIND CEILING ON THE DEPARTURE FACTOR ONLY (RESULTS.md §10.9). The archive's maximum
+   wind is 45.3 kt: 34 samples above 40 kt, one above 45, none above 50. Above 45 kt the departure
+   exponent is not fitted to anything, and left free it reaches 6.37 m at 60 kt over 60 km. Freezing
+   the factor at 45 kt reverts the law to similarity scaling (Hs ∝ U¹·F^0.5, SPM's own wind exponent)
+   exactly where the evidence stops, and is BIT-IDENTICAL to the uncapped law in every fitted wind bin
+   including the top one. It biases steepness slightly low above 45 kt (Hs is capped, Tp is not) — a
+   regime nothing is painted in; revisit if the roughness layer ever returns.
+
+   Ah is a physical backstop, not an active limiter here: it needs 53 km of fetch at 20 kt and 113 km
+   at 60 kt, against this basin's 13.4 km median fetch.
+
+   RESULT vs WW3 (U10 ≥ 8 kt): rms log-error Hs 0.643 → 0.261, Tp 0.335 → 0.177, median Hs ratio
+   1.476 → 0.981, flat to within 0.96–1.06 across EVERY wind bin from 5 kt to 60 kt — with no blanket
+   multiplier anywhere. (Those figures are for windSea + relaxSea together; see relaxSea.) */
+const SEA={Ch:1.2580580637597052e-3, mh:0.50, dh:0.6565516292035776, Ah:0.09, UR:10, Ucap:45*KT,
+           Ct:0.9128732119917824,    mt:0.18115741724683856,         At:5.77909287098488};
 function windSea(U,F){ if(U<0.5||F<500) return {Hs:0,Tp:0};
-  const Hs_f=4.0*U*Math.sqrt(1.6e-7*F/G), X=G*F/(U*U), Tp_f=1/(3.5*(G/U)*Math.pow(X,-0.33));
-  return {Hs:Math.min(Hs_f,0.24*U*U/G),Tp:Math.min(Tp_f,0.72*U)}; }
+  const X=G*F/(U*U), dep=Math.pow(Math.min(U,SEA.Ucap)/SEA.UR, SEA.dh);
+  return {Hs:Math.min(SEA.Ch*Math.pow(X,SEA.mh)*dep, SEA.Ah)*U*U/G,
+          Tp:Math.min(SEA.Ct*Math.pow(X,SEA.mt), SEA.At)*U/G}; }
+/* WIND MEMORY (Job 2, 2026-08-04). windSea() above is the EQUILIBRIUM sea — the sea the wind would
+   raise if it had blown at this speed over this fetch forever. A real sea lags it, and that lag is
+   not a detail: per-sample against WW3, Hs correlates at r = 0.91 but the steepness S₀ = 2πHs/(gTp²)
+   that the roughness band is thresholded on correlates at r ≈ 0. Taking the ratio cancels the part an
+   equilibrium model predicts well and leaves WAVE AGE, which it does not carry at all. At fixed wind
+   WW3's median S₀ is 0.0290 for a decaying sea against 0.0354 at the peak of a rising one — a 22%
+   swing with the wind held constant. Exact Bayes on the archive puts a hard ceiling of 0.5% on the
+   WW3-Low row for ANY memoryless model, so this is the term that makes that row reachable at all.
+
+   Energy (Hs²), not height, is the relaxing quantity — that is what a source-balance integrates —
+   with separate growth and decay constants, and Tp relaxing on its own, longer one. Fitted jointly
+   with the growth law above; held-out error 0.09010 against 0.16157 for the equilibrium law alone,
+   so the memory generalises rather than absorbing training noise.
+
+   PURE, AND THE CALLER OWNS THE STATE. relaxSea() reads no module state and keeps none: it takes the
+   previous sea, the new equilibrium, and the elapsed hours, and returns the new sea. That keeps
+   physics.js pure and DOM-free, and it keeps the GAP POLICY where it belongs — with whoever owns the
+   time axis. Pass prev = null to (re)seed at equilibrium, which is what a caller must do at the start
+   of a series and after a hole in it. The Node harnesses reseed at gaps > 1.01 h because their archive
+   is hourly; a map precompute must make the same choice explicitly.
+
+   INERT WITHOUT HISTORY. prev = null (or a non-finite / non-positive dtH) returns the equilibrium
+   unchanged, so force_explorer.html — which has no time axis at all — and quarter_tests.mjs, which
+   fabricates its seas, are NUMERICALLY UNCHANGED by the existence of this function.
+
+   ⚠ NO PRODUCTION CONSUMER TODAY: the roughness layer is withdrawn from both public maps, so only the
+   Node harnesses and the replay work exercise this. If the layer returns, note that memory breaks the
+   map's independent-per-hour decode (unified_map.html:1348) — hour 30 would depend on hours 0→30 — and
+   needs a sequential precompute (≈232 ms per hour of 6,200 cells, so ~10 s for 48 h). */
+const SEA_TAU={grow:1.4184931235212639, decay:2.0876645889810157, tp:3.4467184244562445};  // hours
+function relaxSea(prev, eq, dtH){
+  if(!prev || !isFinite(dtH) || !(dtH>0)) return {Hs:eq.Hs, Tp:eq.Tp};       // inert without history
+  const E=prev.Hs*prev.Hs, Eeq=eq.Hs*eq.Hs;
+  const rE=1-Math.exp(-dtH/(Eeq>E?SEA_TAU.grow:SEA_TAU.decay)), rT=1-Math.exp(-dtH/SEA_TAU.tp);
+  return {Hs:Math.sqrt(Math.max(E+rE*(Eeq-E), 0)), Tp:Math.max(prev.Tp+rT*(eq.Tp-prev.Tp), 0)}; }
 function haz(Hs,Tp,dirFrom,curKt,curToward){                 // returns band, S, hf, Hamp
   if(!(Hs>0.05)||!(Tp>0)) return {band:-1,S:0,hf:1,Hamp:0};
   const c0=G*Tp/(2*Math.PI), Uopp=Math.abs(curKt)*KT*Math.cos((curToward-dirFrom)*Math.PI/180);
