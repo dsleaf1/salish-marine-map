@@ -181,8 +181,13 @@
     /* Arrows + Region are fixed on the phone (densest / navigate by pinch-and-pan) — controls
        hidden, fewer control rows so the map gets the screen. Region was only ever a navigation
        shortcut: tiles load from the viewport either way. (Base map is hidden everywhere now — see
-       the global #baseFld rule.) */
-    #arrowsFld,#regionFld,#windArrowsFld,#steepStyleFld{display:none}
+       the global #baseFld rule.)
+       ⚠ #steepStyleFld came OFF this list 2026-08-07 (David) when Wave Height was added: with three
+       displays the phone can no longer be pinned to one of them, and ?st= is not a control. It is the
+       ONLY phone chrome added since the height-budget pass — measured cost is one control row, and it
+       appears in the Roughness layer only (updateSteepControls keeps the inline display:none in the
+       other two layers, and an inline style beats this rule either way). */
+    #arrowsFld,#regionFld,#windArrowsFld{display:none}
     #map{flex:1 1 240px;height:auto;min-height:180px;border-radius:8px}
     .status{flex:0 0 auto;margin:4px 0 0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .offbar{flex:0 0 auto;margin-top:6px}
@@ -244,7 +249,7 @@
 <header>
   <h1>HRDPS Wind and SSCOFS Current Maps</h1>
   <details id="intro"><summary>About this map · what’s new</summary>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b>. <span style="opacity:.7">build 2026-08-07a (base legibility under the wind fill — one base map now, <b>USGS topo</b>, in every layer. Its water is darkened by a colour transform applied to the base tiles themselves, so land and water separate by <i>tone</i> and the coastline reads as the boundary between them even under a 70% fill; a light contrast + saturation lift keeps terrain and place names readable. The base-map selector and the alternative bases have been removed. This description is now <b>collapsed by default</b> — open it with <b>About this map</b> above. The desktop gains the <b>➤ On/Off</b> button beside Fill opacity that hides the arrows without losing the arrow density you were on (the phone has had it since 2026-07-22i). In the Roughness layer the display selector is now <b>Sea State</b> and its displays are <b>Wave Steepness</b> (was "Rings on wind") and <b>Quartering (beta)</b> (was "On your course"); the <b>Shaded cells</b> display has been removed. The <b>Low</b> call is gone from that layer: rings now start at <b>Medium</b>, and Medium draws <b>grey</b> rather than amber, so only High (orange) and Very high (magenta) read as warnings — water with no ring is <b>unrated, not calm</b>. The optional wind arrows over that display are now <b>black on a white casing</b> (they were white on a dark one). The bands themselves are unchanged: this is what the layer reports, not how it is computed; 2026-08-04a: the wind-against-current <b>Roughness</b> layer is <b>temporarily withdrawn</b>: compared band for band against WaveWatch III, a peer-reviewed wave model, it reads a band <i>low</i> in the seas that matter most — where WW3 calls the water "High" the roughness layer painted "Medium" about three quarters of the time, and where WW3 called it "Low" it painted "Medium". The layer stays off until both are corrected and re-verified against WW3; the wind and current layers are unaffected and unchanged; 2026-07-23a: Currents: zoomed in past z10, the whole-coast overview now draws <i>alongside</i> the native mesh instead of being switched off by it — a mesh region whose bbox merely clips the corner of your view no longer blanks the modelled water everywhere else on screen (WCVI, Clayoquot to Barkley, was losing a full screen of currents to an 800 m pan), and the tap readout comes back with it; 2026-07-22l: Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → the quartering display now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b>. <span style="opacity:.7">build 2026-08-08b (the <b>Waves</b> layer is <b>back in the public menu</b> after its 2026-08-04 withdrawal — the under-read that caused the withdrawal has been corrected and re-checked against WaveWatch III. Three displays, switched with <b>Sea State</b>: <b>Wave Steepness</b> — rings from <b>Medium</b> up, so water with no ring is <b>unrated, not calm</b>; <b>Wave Height</b> (new) — the wind-sea height itself in <b>metres</b> on a continuous scale, with the opposing current's amplification applied, and it is <b>wind sea only, no ocean swell</b>, so it can read low where a swell is running; and <b>Quartering (beta)</b> — the worst heading to be steering, <b>direction only and uncalibrated</b>. The whole layer stays a wind-against-current <b>heuristic</b> — a signpost of potential trouble, not a wave forecast, and it is shown only in protected waters. Also fixed: on Wave Height the Key drew the "current set" arrow swatch in cyan while the map draws those arrows near-black; the swatch now matches the map; 2026-08-08a: the wave model itself was <b>refitted</b> against WaveWatch III (604 days, 260,928 samples, three Strait of Georgia stations). The old formula read wave heights about <b>1.5× too high</b> through the middle of its range; the refitted one reads them within about 5%, with no blanket multiplier applied. The practical effect is fewer false alarms: good 2-hour paddling windows the model wrongly condemned drop from about <b>42% to 22%</b> overall, and from about 22% to 3% in its roughest band; 2026-08-07a: base legibility under the wind fill — one base map now, <b>USGS topo</b>, in every layer. Its water is darkened by a colour transform applied to the base tiles themselves, so land and water separate by <i>tone</i> and the coastline reads as the boundary between them even under a 70% fill; a light contrast + saturation lift keeps terrain and place names readable. The base-map selector and the alternative bases have been removed. This description is now <b>collapsed by default</b> — open it with <b>About this map</b> above. The desktop gains the <b>➤ On/Off</b> button beside Fill opacity that hides the arrows without losing the arrow density you were on (the phone has had it since 2026-07-22i). In the Roughness layer the display selector is now <b>Sea State</b> and its displays are <b>Wave Steepness</b> (was "Rings on wind") and <b>Quartering (beta)</b> (was "On your course"); the <b>Shaded cells</b> display has been removed. The <b>Low</b> call is gone from that layer: rings now start at <b>Medium</b>, and Medium draws <b>grey</b> rather than amber, so only High (orange) and Very high (magenta) read as warnings — water with no ring is <b>unrated, not calm</b>. The optional wind arrows over that display are now <b>black on a white casing</b> (they were white on a dark one). The bands themselves are unchanged: this is what the layer reports, not how it is computed; 2026-08-04a: the wind-against-current <b>Roughness</b> layer was <b>temporarily withdrawn</b> (restored 2026-08-08b): compared band for band against WaveWatch III, a peer-reviewed wave model, it read a band <i>low</i> in the seas that matter most — where WW3 called the water "High" the roughness layer painted "Medium" about three quarters of the time, and where WW3 called it "Low" it painted "Medium". It stayed off until that was corrected and re-verified against WW3; the wind and current layers were unaffected and unchanged; 2026-07-23a: Currents: zoomed in past z10, the whole-coast overview now draws <i>alongside</i> the native mesh instead of being switched off by it — a mesh region whose bbox merely clips the corner of your view no longer blanks the modelled water everywhere else on screen (WCVI, Clayoquot to Barkley, was losing a full screen of currents to an 800 m pan), and the tap readout comes back with it; 2026-07-22l: Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → the quartering display now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
   </details>
 </header>
 <main>
@@ -253,14 +258,14 @@
       <select id="mode">
         <option value="current" selected>Currents (SSCOFS)</option>
         <option value="wind">Wind (HRDPS 2.5 km)</option>
-        <option value="steep">Roughness (wind vs current)</option>
+        <option value="steep">Waves</option>   <!-- renamed from "Roughness (wind vs current)" 2026-08-07 (David); phone label below matches -->
       </select></div>
     <!-- Renamed 2026-08-07 (David): "Steep display" → Sea State, "Rings on wind" → Wave Steepness,
          "On your course" → Quartering (beta). The `value=`s are UNCHANGED on purpose — they are the
          ?st= link values, so every shared/bookmarked steep link keeps working. "Shaded cells"
          (value="fill") was REMOVED in the same pass; ?st=fill now falls back to rings. -->
     <div class="fld" id="steepStyleFld" style="display:none"><label for="steepStyle">Sea State</label>
-      <select id="steepStyle"><option value="rings" selected>Wave Steepness</option><option value="course">Quartering (beta)</option></select></div>
+      <select id="steepStyle"><option value="rings" selected>Wave Steepness</option><option value="course">Quartering (beta)</option><option value="height">Wave Height</option></select></div>
     <div class="fld" id="courseFld" style="display:none"><label for="course">Course (steer)</label>
       <div class="courseRow">
         <select id="course" title="Heading used by the tap readout and the rose. The map's ticks show each cell's worst heading, whatever you steer."></select>
@@ -310,29 +315,23 @@ const R2="https://pub-cb8eb71f75d64a57a0d021318ccd0ae7.r2.dev";
 const SSCOFS_URL="https://nvs.nanoos.org/WaysWaterMoves";
 const HRDPS_URL="https://catalogue.ec.gc.ca/geonetwork/srv/api/records/5b401fa0-6c29-57f0-b3d5-749f301d829d";
 const $=id=>document.getElementById(id);
-/* Steepness (wind-against-current risk) went PUBLIC 2026-07-17 alongside the currents + wind
-   layers, and is WITHDRAWN from the public UI again 2026-08-04 (David's call) pending band-for-band
-   revalidation against WaveWatch III. The defect: over 18,552 samples at U10 14-22 kt with 1.5 kt
-   of fully opposing current, WW3 calls the sea "High" where this model paints "Medium" 76.1% of the
-   time — an UNDER-read, on the largest row of the confusion matrix. (The companion cell, WW3 "Low"
-   -> model "Medium" at 91.0%, over-warns.) See wave_validation/RESULTS.md §9.2 and
-   Wave_Layer_Discrepancy_Handoff.md; judge any fix on the per-row matrix, NOT on a Medium-or-above
-   indicator, which hides this slide entirely.
+/* Steepness (wind-against-current risk) went PUBLIC 2026-07-17, was WITHDRAWN 2026-08-04 pending
+   band-for-band revalidation against WaveWatch III, and is PUBLIC AGAIN 2026-08-08 (David's call).
+   The withdrawal defect — over 18,552 samples at U10 14-22 kt with 1.5 kt of fully opposing current,
+   WW3 called the sea "High" where this model painted "Medium" 76.1% of the time, an UNDER-read on
+   the largest row of the confusion matrix — was fixed by the WaveWatch III refit of physics.js
+   (option D, shipped 2026-08-08, sha1 db0083056cb1): height rms log-error 0.643 -> 0.392, median
+   ratio 1.476 -> 0.949. See wave_validation/RESULTS.md §9.2/§10 and Wave_Layer_Discrepancy_Handoff.md;
+   judge any future fix on the per-row matrix, NOT on a Medium-or-above indicator, which hides the
+   slide entirely.
 
-   This is a UI gate ONLY — physics.js is untouched and modelHash 3e07c2026658 still stands, so the
-   layer returns by flipping STEEP_ON once the bands agree. The Layer option stays VISIBLE but
-   DISABLED and says why (David 2026-08-04), rather than vanishing: same principle as the
-   "Blank isn't calm" out-of-zone popup. ?dev=1 re-enables the whole layer for David's own use. */
-const STEEP_ON = new URLSearchParams(location.search).get("dev")==="1";
-// Shown on the disabled Layer option (the ONLY place the message reaches phone — .note and the
-// header blurb are both display:none there) and appended to the desktop per-mode note.
-const STEEP_WITHDRAWN_OPT   = "Roughness — withdrawn pending WaveWatch III validation";
-const STEEP_WITHDRAWN_PHONE = "Roughness — withdrawn";
-const STEEP_WITHDRAWN_NOTE  = '<span style="display:block;margin-top:6px"><b>The wind-against-current '
-  + 'roughness layer is temporarily withdrawn (2026-08-04).</b> Compared band for band against '
-  + 'WaveWatch III — a peer-reviewed wave model — it reads a band <i>low</i> in exactly the seas that '
-  + 'matter: where WW3 calls the water "High", this model painted "Medium" about three quarters of the '
-  + 'time. It stays off until that is corrected and re-verified. Wind and currents are unaffected.</span>';
+   Shipping THIS release (2026-08-08, David's "option 2" — all three displays public):
+     - Wave Steepness keeps ALL THREE ring levels (grey / orange / magenta). No wind memory.
+     - Wave Height ships (continuous metres, opposing-current amplification applied).
+     - Quartering (beta) ships, labelled uncalibrated.
+   STEEP_ON stays as a one-line gate so the layer can be withdrawn again by flipping it to false;
+   the 2026-08-04 withdrawal wording has been removed now that the layer is public. */
+const STEEP_ON = true;   // was: ?dev=1 gate, 2026-08-04 -> 2026-08-08
 // [name, center, zoom, key, bbox W,S,E,N] — bboxes MUST match hrdps-ingest/sscofs_mesh.py REGIONS.
 // Order = element ownership priority inside the 0.05° overlaps (earlier region draws, later skips),
 // so translucent neighbours never double-blend into a dark seam.
@@ -377,6 +376,38 @@ const STEEP_COL=["#f2b705","#e8590c","#8e1c6b"];        // band 2 medium, 3 high
    live: RING reads bands 3 and 4 from it. */
 const STEEP_LBL=["Medium — steepening chop","High — steep, short seas","Very high — breaking / near-blocking"];
 const STEEP_SUB=["wind against current builds a short, stacked sea","confused steep water; avoid in a loaded boat","wave blocking: standing, breaking seas"];
+/* ---- "Wave Height" display (Sea State option 3) — added 2026-08-07 on David's order --------------
+   PAINTS `Hamp = Hs × hf` (physics.js haz():134 / hazSpec():176): the dominant wind sea's height with
+   the opposing-current amplification applied. `hf` is EXACTLY 1 at zero current in BOTH code paths
+   (haz's |alpha|<1e-9 guard gives x=1 ⇒ hf=1; hazSpec's every af=1 ⇒ hf=√(eSum/wSum)=1), so at slack
+   this display IS the wind-sea Hs, and in a rip it is the amplified sea.
+   ⛔ NOT `gateH` (= Hamp·(1+0.8·fBrk), up to 1.8× the physical height). gateH is the band-gate
+   envelope — an internal cap, not a height anyone can hold against the water.
+   WHY HEIGHT: Hs is the only wave quantity here that is VALIDATED — r=0.91 against WaveWatch III,
+   median ratio 0.981, flat 0.96–1.06 in every wind bin 5–60 kt. Steepness correlates r≈0 and the
+   quartering index cannot be calibrated at all. It is also checkable in metres.
+   ⚠ CONTINUOUS, NOT BANDED. The 13 entries below are gradient CONTROL POINTS, blended in the fragment
+   shader (uSmooth) — they are not levels and must never be presented as levels. Banding a continuous
+   quantity is exactly what put the steepness display under review.
+   ⚠ THE STOPS ARE NOT EVENLY SPACED IN METRES, and that is a measurement, not a preference. Over the
+   whole 2026-08-07T12Z cycle (48 h × 6,196 mesh cells, domain peak wind 25.4 kt) the painted quantity
+   came out: median 0.056 m · p90 0.383 · p99 1.056 · p99.9 1.442 · max 1.604. A LINEAR 0–3 m ramp puts
+   99% of the water in the bottom third of the scale and the median in its first 2% — it would paint a
+   near-uniform pale wash and discriminate nothing. These stops are stretched at the bottom (0.1 m
+   apart to 0.3 m, widening geometrically after) so the range a kayak actually cares about gets most of
+   the colour, while keeping headroom to 3 m — the model reaches 3.25 m at 40 kt over 60 km of fetch,
+   and a gale must not paint flat-saturated. This is a display curve, NOT a re-banding: the value is
+   still continuous and the shader still blends across it.
+   Cool teal→violet, chosen to be unlike the Beaufort ramp's green/yellow/orange middle so a glance
+   says which display you are on, with luminance falling monotonically so magnitude survives both the
+   fill blend and colour-vision deficiency. */
+const WH_EDGES=[0.1,0.2,0.3,0.45,0.6,0.8,1.0,1.3,1.6,2.0,2.5,3.0];
+const WH_COL=["#f0f7f4","#d5eee8","#b3e2da","#8ad3cc","#5fc0bf","#3fa8b3","#328da6","#2f7197",
+              "#33557f","#383d66","#38294e","#2d1a37","#1c0f22"];
+/* Ramp source for glMode(), shaped like a MODES entry but deliberately NOT IN `MODES`: MODES keys are
+   the ?mode= vocabulary (the URL reader tests `MODES[m]`), and Wave Height is a DISPLAY of the steep
+   layer, not a layer. minDraw 0 discards only the DRY sentinel (−1000); heights are ≥ 0. */
+const WAVEH={ edges:WH_EDGES, cols:WH_COL, minDraw:0, smooth:true, unit:"m" };
 // "Wave Steepness" display: a hazard RING (colour+weight by band) with a cyan current dot+arrow, drawn
 // over the full wind fill — the original wind-map station format. Indexed by band 0..4.
 /* TWO CHANGES, David 2026-08-07:
@@ -530,8 +561,13 @@ let course=225;                 // paddler heading (course steered), degrees; on
 // alphaRef() picks which opacity the slider/URL control. The two wind-fill displays share ringsAlpha,
 // so switching between them keeps one fill opacity instead of jumping.
 const windFill=()=> mode==="steep" && (steepStyle==="rings"||steepStyle==="course");
-const glMode=()=> windFill() ? MODES.wind : MODES[mode];
-const alphaRef=()=> windFill() ? [MODES.steep,"ringsAlpha"] : [MODES[mode],"alpha"];
+// "height" (Wave Height, 2026-08-07) is the third display: it paints its OWN continuous ramp (WAVEH)
+// rather than the wind's, so it is not a windFill — but it is still a full-coverage fill over the same
+// cells, so it shares ringsAlpha with the other two. All three Sea State displays therefore keep ONE
+// fill opacity, and switching between them never jumps the slider.
+const heightFill=()=> mode==="steep" && steepStyle==="height";
+const glMode=()=> windFill() ? MODES.wind : heightFill() ? WAVEH : MODES[mode];
+const alphaRef=()=> (windFill()||heightFill()) ? [MODES.steep,"ringsAlpha"] : [MODES[mode],"alpha"];
 const getAlpha=()=>{ const [o,k]=alphaRef(); return o[k]; };
 const setActiveAlpha=v=>{ const [o,k]=alphaRef(); o[k]=clampAlpha(v); };
 
@@ -608,13 +644,26 @@ function syncOverlayPos(){
    origin for float precision). Per frame the shader maps them to the container:
      container = (aPos - uTopLeft) * uScale
    The ramp is uniform-driven (13 colours / 12 edges max), so currents (8 bins) and Beaufort
-   (13 bins) share one shader; unused edges are padded to 9999 (mediump-safe) and never fire. */
+   (13 bins) share one shader; unused edges are padded to 9999 (mediump-safe) and never fire.
+   uSMOOTH (added 2026-08-07 for the Wave Height display): 0 = the original hard-binned lookup, bit
+   for bit — every existing layer sets it and nothing about them changes. 1 = the SAME stops read as
+   gradient control points, linearly blended between the one below the value and the one above, so a
+   continuous quantity paints continuously instead of being re-banded on the way to the screen.
+   Colour i is anchored at uEdges[i-1] (colour 0 at value 0), and the top colour saturates.
+   The `for(i){ if(i==bin) … }` idiom is not decoration: GLSL ES 1.0 forbids indexing a uniform array
+   with a non-constant expression in a fragment shader, so every lookup here has to be a scan. */
 const Z0=12, CRS=L.CRS.EPSG3857;
 const VS=`attribute vec2 aPos; attribute float aSpeed; uniform vec2 uTopLeft; uniform float uScale; uniform vec2 uSize; varying float vSpeed;
 void main(){ vec2 c=(aPos-uTopLeft)*uScale; gl_Position=vec4(c.x/uSize.x*2.0-1.0, 1.0-c.y/uSize.y*2.0, 0.0, 1.0); vSpeed=aSpeed; }`;
-const FS=`precision mediump float; varying float vSpeed; uniform vec3 uCols[13]; uniform float uEdges[12]; uniform float uAlpha; uniform float uMinDraw;
+const FS=`precision mediump float; varying float vSpeed; uniform vec3 uCols[13]; uniform float uEdges[12]; uniform float uAlpha; uniform float uMinDraw; uniform float uSmooth;
 void main(){ if(vSpeed<uMinDraw) discard; int bin=0; for(int i=0;i<12;i++){ if(vSpeed>=uEdges[i]) bin=i+1; }
-  vec3 c=uCols[12]; for(int i=0;i<13;i++){ if(i==bin) c=uCols[i]; } gl_FragColor=vec4(c,uAlpha); }`;
+  vec3 c=uCols[12]; for(int i=0;i<13;i++){ if(i==bin) c=uCols[i]; }
+  if(uSmooth>0.5&&bin<12){
+    float e0=0.0, e1=0.0; vec3 cN=c;
+    for(int i=0;i<12;i++){ if(i==bin-1) e0=uEdges[i]; if(i==bin) e1=uEdges[i]; }
+    for(int i=0;i<13;i++){ if(i==bin+1) cN=uCols[i]; }
+    if(e1>e0) c=mix(c,cN,clamp((vSpeed-e0)/(e1-e0),0.0,1.0)); }
+  gl_FragColor=vec4(c,uAlpha); }`;
 let gl=null, prog=null, loc={};
 const tiles={};        // mesh region key -> tile (currents, zoomed in)
 let overview=null;     // SSCOFS whole-coast current overview
@@ -636,6 +685,7 @@ function initGL(){
   loc.uTopLeft=gl.getUniformLocation(prog,"uTopLeft"); loc.uScale=gl.getUniformLocation(prog,"uScale"); loc.uSize=gl.getUniformLocation(prog,"uSize");
   loc.uCols=gl.getUniformLocation(prog,"uCols"); loc.uEdges=gl.getUniformLocation(prog,"uEdges");
   loc.uAlpha=gl.getUniformLocation(prog,"uAlpha"); loc.uMinDraw=gl.getUniformLocation(prog,"uMinDraw");
+  loc.uSmooth=gl.getUniformLocation(prog,"uSmooth");
   // Separate alpha blending: plain blendFunc scales the ALPHA channel by SRC_ALPHA too, leaving
   // alpha=a² while RGB is premultiplied at a. The browser then composites a buffer whose colour and
   // coverage disagree, pulling every speed bin off its legend colour.
@@ -646,7 +696,7 @@ function initGL(){
   return true;
 }
 function applyModeGL(){
-  if(!gl) return; const m=glMode();          // ramp source (wind's, when steep+rings)
+  if(!gl) return; const m=glMode();          // ramp source (wind's when steep+rings/course, WAVEH when steep+height)
   const cols=new Float32Array(39);
   for(let i=0;i<13;i++){ const c=hex2rgb(m.cols[Math.min(i,m.cols.length-1)]);
     cols[i*3]=c[0]; cols[i*3+1]=c[1]; cols[i*3+2]=c[2]; }
@@ -655,6 +705,7 @@ function applyModeGL(){
   gl.useProgram(prog);
   gl.uniform3fv(loc.uCols,cols); gl.uniform1fv(loc.uEdges,edges);
   gl.uniform1f(loc.uAlpha,getAlpha()); gl.uniform1f(loc.uMinDraw,m.minDraw);
+  gl.uniform1f(loc.uSmooth, m.smooth?1:0);   // only WAVEH sets it; every other ramp stays hard-binned
 }
 function tileOrigin(bbox){ return CRS.latLngToPoint(L.latLng((bbox[1]+bbox[3])/2,(bbox[0]+bbox[2])/2),Z0); }
 function buildMeshBuffers(t,nodes,tris){
@@ -1086,6 +1137,30 @@ function doHover(){
         html+=`<div style="opacity:.55;font-size:11px;margin-top:3px">quartering index Q ${Qc.toFixed(2)} `
              +`— compare headings and spots with it, not against a severity scale: its absolute value is uncalibrated.</div>`;
         html+=courseRoseSVG(t,m,course);
+      } else if(steepStyle==="height"){
+        /* WAVE HEIGHT readout. No band word and no hazard colour: the headline is a NUMBER, which is
+           the whole reason David picked this quantity — a reader can hold it against the water in
+           front of them, which no band word has ever allowed. Two decimals, because the interesting
+           range for a kayak is 0.3–1.5 m and one decimal throws away half of it.
+           The two terms are printed SEPARATELY under it. Hamp is a product, and a paddler who is
+           told only the product cannot tell a 1.4 m sea the wind built from a 1.0 m sea a rip has
+           stood up — and those two want different decisions. */
+        const H=t.Hamp[m], hf=t.hf[m];
+        html=`<b>Wave height — ${H.toFixed(2)} m</b>`
+          +`<div class="hz" style="opacity:.7">Wind sea only — no ocean swell is included.</div>`
+          +row("Wind sea", t.Hs[m]>0.05?`${t.Hs[m].toFixed(2)} m @ ${t.Tp[m].toFixed(1)} s`:"negligible")
+          +row("Current effect", hf>1.005
+              ? `×${hf.toFixed(2)} — wave against current, adding ${(H-t.Hs[m]).toFixed(2)} m`
+              : "×1.00 — none (slack, or the current is not opposing the sea)")
+          +row("Wind", `${Math.round(t.wKt[m])} kt from ${compass(t.wFrom[m])} (${Math.round(t.wFrom[m])}°)`)
+          +row("Current", t.spd[m]>=0.1?`${t.spd[m].toFixed(1)} kt toward ${compass(t.dir[m])} (${Math.round(t.dir[m])}°)`:"slack (&lt;0.1 kt)")
+          +row("Fetch", `${t.fUse[m]>=60?"≥60":t.fUse[m].toFixed(0)} km upwind`)
+          /* Significant height is a statistic, not a ceiling, and a number this concrete invites being
+             read as one. The Rayleigh factors are the same ones §11 used to argue the quartering ramp
+             down, so they are already the doc's language. */
+          +`<div style="opacity:.55;font-size:11px;margin-top:3px">Significant height — the mean of the`
+          +` highest third. Expect roughly ${(1.27*H).toFixed(2)} m in the biggest tenth and about`
+          +` ${(1.86*H).toFixed(2)} m for the largest wave in a few hours.</div>`;
       } else {
       // Bands 0–1 are no longer NAMED (the Low call was removed 2026-08-07): below band 2 the readout
       // says the layer has nothing to report rather than reporting "Low", which read as a reassurance.
@@ -1610,7 +1685,10 @@ async function loadSteepOnce(){
            band:new Float32Array(ne),
            // per-cell inputs kept for the hover readout (filled each hour in decodeSteep)
            wKt:new Float32Array(ne),wFrom:new Float32Array(ne),Hs:new Float32Array(ne),
-           Tp:new Float32Array(ne),fUse:new Float32Array(ne)};
+           Tp:new Float32Array(ne),fUse:new Float32Array(ne),
+           // Wave Height display + every steep readout: the dominant sea's current amplification
+           // factor and the amplified height itself. Hamp = Hs·hf, hf ≥ 1 (capped 2.5), hf = 1 at slack.
+           hf:new Float32Array(ne),Hamp:new Float32Array(ne)};
   t.hourOf=h=>h;                        // decode depends on BOTH datasets; cache on the master hour
   // Per steepness cell precompute: its index into the current overview water array (curCell) and its
   // nearest wind-grid linear index (windCell). Cheap per-hour decode then just reads + runs steepCell.
@@ -1665,10 +1743,23 @@ async function loadSteepOnce(){
       t.spd[m]=curKt; t.dir[m]=curToward;                          // arrows show current SET
       t.wKt[m]=wByte/1.852; t.wFrom[m]=dirFrom;
       t.Hs[m]=sc.dom.Hs; t.Tp[m]=sc.dom.Tp; t.fUse[m]=sc.dom.Fkm; // hover shows the dominant sea
+      /* WAVE HEIGHT (2026-08-07): the current amplification of that same dominant sea. One extra
+         hazSpec on the component steepCell already picked — no new decode, no pipeline change, and
+         ~3% on top of the ±80°/5° fan's ~33 hazard calls per cell.
+         The FAST path is EXACT here: hazSpec's fast return and its full return give the identical
+         `hf`/`Hamp` (both read `now`); only `band` differs, and band comes from steepCell, not here.
+         Below Hs 0.05 m hazSpec's degenerate return gives hf = 1, so Hamp = Hs and the field stays
+         continuous across that cutoff instead of stepping to zero. */
+      t.hf[m]=hazard(sc.dom.Hs, sc.dom.Tp, sc.dom.from, curKt, curToward, "spec", true).hf;
+      t.Hamp[m]=sc.dom.Hs*t.hf[m];
       t.band[m]=sc.band;
       setQuad(t.spd3,m, sc.band<1.5?DRY:sc.band);                  // bands ≤1 discarded (threshold-only)
     }
     if(steepStyle==="course"){ t.buildQuarter(); t.shadeCourse(); t.arrowGate=null; } // wind overwrites spd3; ticks gate on qPeak
+    // Wave Height: the metres overwrite spd3, and the arrows are UNGATED — they show the current set,
+    // which is the thing doing the amplifying, so gating them on the steepness band would hide the
+    // explanation of the very pattern being painted.
+    else if(steepStyle==="height"){ t.shadeHeight(); t.arrowGate=null; }
     else t.arrowGate=t.band;
   };
   /* ---- Quartering-sea (course) display ------------------------------------------------------
@@ -1741,6 +1832,14 @@ async function loadSteepOnce(){
     for(let m=0;m<ne;m++){ const w=t.wKt[m];
       setQuad(t.spd3, m, w===w ? w*1.852 : DRY); }                 // NaN = dry; kt → km/h
   };
+  /* WAVE HEIGHT: the GL "speed" fed per cell is Hamp in METRES, read on WAVEH's continuous ramp
+     (uSmooth=1). Same re-point of an already-decoded field as shadeCourse — no new data path.
+     Same footprint too: these are the STEEP_ZONES cells, so the height fill appears only in the
+     protected, fetch-limited water the wind-sea model is claimed over, never the open coast. */
+  t.shadeHeight=()=>{
+    for(let m=0;m<ne;m++)
+      setQuad(t.spd3, m, t.wKt[m]===t.wKt[m] ? t.Hamp[m] : DRY);   // NaN wind = dry cell
+  };
   t.arrowGate=t.band;                    // draw arrows only where the water is actually shaded (band≥2)
   t.fetchKm=fetchKm;                     // kept for hover readout / verification
   t.ready=true; steepTile=t; render(); setStatus(loadedSummary());
@@ -1778,22 +1877,92 @@ function buildLegend(){
     s=`<span class="lchip" style="font-weight:600"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(md.alpha);
   } else if(steepStyle==="rings"){
     // rings drawn as an open circle (coloured border); fill behind = wind (Beaufort)
+    /* PHONE TRIM, David 2026-08-07: the phone Key panel was taller than the map it explains. Three
+       changes, phone only — the desktop keeps every word:
+         1. ring labels drop to the bare band WORD (RING_WORD, "Medium") instead of the full
+            description (RING_LBL, "Medium — steepening chop"). The descriptions still reach a phone
+            reader through the TAP readout, which prints RING_LBL for the cell they touched, so this
+            moves the wording rather than deleting it;
+         2. the four swatch chips go into TWO COLUMNS — 2 rows instead of 4;
+         3. the "No ring is not calm" paragraph is dropped. ⚠ That sentence exists because unringed
+            water reads as calm; on the phone it survives in the tap readout's "nothing reported
+            here — treat it as unrated rather than calm" line, which is why dropping it here is
+            trimming and not a silent removal of the warning.
+       ⚠ Two-column grid ≠ automatically shorter — the coast map's 3-column legend came out TALLER
+       (task_coast_phone_legend_3col). This one is measured, not assumed. */
+    const phoneKey=matchMedia("(max-width:640px)").matches;
     s='<span class="lchip" style="font-weight:600">Wave steepness · fill = wind:</span>';
+    let sw="";
     for(let bnd=2;bnd<=4;bnd++)   // from 2: the Low ring was removed 2026-08-07 (RING[1] is null)
-      s+=`<span class="lchip"><i class="lsw" style="border:3px solid ${RING[bnd].col};background:transparent;border-radius:50%"></i>${RING_LBL[bnd]}</span>`;
-    s+=`<span class="lchip"><i class="lsw" style="border-radius:50%;background:#00b4d8;border-color:#023047"></i>current set (arrow)</span>`;
+      sw+=`<span class="lchip"><i class="lsw" style="border:3px solid ${RING[bnd].col};background:transparent;border-radius:50%"></i>${phoneKey?RING_WORD[bnd]:RING_LBL[bnd]}</span>`;
+    sw+=`<span class="lchip"><i class="lsw" style="border-radius:50%;background:#00b4d8;border-color:#023047"></i>current set (arrow)</span>`;
+    // The grid is a plain wrapper: each .lchip stays its own grid ITEM, so their own flex layout is
+    // untouched and only the stacking changes.
+    s+= phoneKey ? `<span style="display:grid;grid-template-columns:1fr 1fr;gap:4px">${sw}</span>` : sw;
     /* The low band draws nothing at all now, so "no ring" covers MORE water than it used to and the
        silence has to be stated — same reason the out-of-zone tap readout exists. Keep the whole
        sentence in ONE .lchip span: .lchip is display:flex, so a nested ELEMENT becomes its own flex
        item and the sentence breaks into columns (learned the hard way on the quartering legend). */
-    s+=`<span class="lchip" style="opacity:.6"><span><b>No ring is not calm:</b> rings start at Medium`
-      +` — the layer no longer reports a Low band. Unringed water is unrated here, not flat.</span></span>`;
+    if(!phoneKey)
+      s+=`<span class="lchip" style="opacity:.6"><span><b>No ring is not calm:</b> rings start at Medium`
+        +` — the layer no longer reports a Low band. Unringed water is unrated here, not flat.</span></span>`;
     // With wind arrows on, decode the fill's wind-speed colours inline (Beaufort key at the fill alpha)
     if($("windArrows").checked)
       s+=`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(getAlpha());
     else
       s+=`<span class="lchip" style="opacity:.6">coloured fill = wind (Beaufort — see Wind layer)</span>`;
-  } else {   // "course" — the only other Sea State display since "fill" was removed 2026-08-07
+  } else if(steepStyle==="height"){
+    /* WAVE HEIGHT — a GRADIENT BAR, not chips. Chips would re-band a quantity whose entire point is
+       that it is not banded, and the reader would start quoting the swatch names back. The bar is
+       built from the same 13 stops the shader blends, drawn at the live fill alpha over the base
+       water, so it is a picture of what is actually on the screen rather than of the raw palette.
+       The bar is drawn with the stops EVENLY spaced and the metre values written under them, rather
+       than on a linear metre axis. WH_EDGES is stretched at the low end (see its comment — the median
+       cell is 0.06 m), so a linear axis would crush every colour a paddler actually meets into the
+       left fifth of the bar. Labels carry the values, so nothing is hidden by doing it this way.
+       ⚠ .lchip is display:flex — every ELEMENT child becomes its own flex item, which would break the
+       bar away from its scale. The whole bar+scale therefore lives inside ONE child span. */
+    const a=getAlpha();
+    const stops=WH_COL.map((c,i)=>`${blend(c,BASE_WATER,a)} ${(100*i/(WH_COL.length-1)).toFixed(1)}%`).join(",");
+    // [stop index, label] — every other stop, so the axis stays readable at 13 control points
+    const WH_TICKS=[[0,"0"],[2,"0.2"],[4,"0.45"],[6,"0.8"],[8,"1.3"],[10,"2.0"],[12,"3 m+"]];
+    s='<span class="lchip" style="font-weight:600">Wave height:</span>'
+     +`<span class="lchip"><span style="display:inline-block;width:232px">`
+     +`<span style="display:block;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.28);`
+     +`background:linear-gradient(90deg,${stops})"></span>`
+     +`<span style="display:block;position:relative;height:13px;font-size:10px;opacity:.72;margin-top:1px">`
+     +WH_TICKS.map(([i,lbl])=>{ const p=100*i/12;
+         const pos = i===0 ? "left:0" : i===12 ? "right:0" : `left:${p.toFixed(1)}%;transform:translateX(-50%)`;
+         return `<span style="position:absolute;${pos}">${lbl}</span>`; }).join("")
+     +`</span></span></span>`
+     /* ⚠ KEY-vs-INK FIX 2026-08-08: this swatch used to be the RINGS display's cyan dot
+        (#00b4d8/#023047), but the rings display is the only one that draws cyan — drawSteepRings()
+        paints its own dot+arrow. Wave Height goes through drawArrows(), which draws every flow arrow
+        in near-black rgba(20,20,30,.92) with a solid filled head. The swatch is therefore a dark
+        ARROW, not a dot: it matches both the colour and the shape actually on the map, and it no
+        longer implies the cyan mark from a different display. Update this if drawArrows() restyles. */
+     +`<span class="lchip"><svg class="lsw" viewBox="0 0 14 14" style="border:0;background:none">`
+     +`<path d="M1 7 H9.2" stroke="rgba(20,20,30,.92)" stroke-width="1.6" stroke-linecap="round"/>`
+     +`<path d="M13 7 L8 4.4 L8 9.6 Z" fill="rgba(20,20,30,.92)"/></svg>current set (arrow)</span>`
+     // What the number IS. The current term has to be named, or a reader in a rip reads the colour as
+     // "the wind made this" and mis-attributes a metre of it.
+     +`<span class="lchip" style="opacity:.6"><span>Significant height in <b>metres</b>, continuous —`
+     +` there are no levels here and no band words. The scale is <b>stretched at the low end</b>, where`
+     +` nearly all protected water sits: the step from 0.1 to 0.3 m gets as much colour as 2 to 3 m.</span></span>`
+     +`<span class="lchip" style="opacity:.6"><span>The <b>wind sea</b> this spot's fetch and wind can`
+     +` build, with the <b>opposing current's</b> amplification applied. At slack the current term is`
+     +` exactly 1, so the colour is the wind sea itself; where the arrows run into the waves it is larger.</span></span>`
+     /* The swell caveat is the "no ring is not calm" of this display, and it is a BIGGER hole here
+        than on the ring display: a height in metres reads as THE sea, and this one is only the local
+        wind-driven part of it. Say it in the legend, not only in the tap. */
+     +`<span class="lchip" style="opacity:.6"><span><b>Wind sea only — no ocean swell.</b> This is the`
+     +` sea the local wind and fetch raise; any swell arriving from outside is not in it and not added`
+     +` to it. Read it inside protected water, and treat anything swell-exposed as bigger than painted.</span></span>`
+     // The one honest claim this display can make that the other two cannot — say it plainly, once.
+     +`<span class="lchip" style="opacity:.6"><span>Height is the one quantity here checked against a`
+     +` peer-reviewed wave model (WaveWatch III): <b>r = 0.91</b>, median ratio 0.98, steady across`
+     +` 5–60 kt. The steepness and quartering displays have no such agreement. <b>Tap for the numbers.</b></span></span>`;
+  } else {   // "course" — the third Sea State display
     /* OPTION 3 — two channels, and the words must keep them apart. STEEP_COL / STEEP_LBL / STEEP_SUB
        are the STEEPNESS layer's palette and wording; reusing them here would present Q on a severity
        scale, which is precisely what §11 removed. The fill is measured wind; the tick is direction. */
@@ -1821,20 +1990,20 @@ function buildLegend(){
      +`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`
      +beaufortKey(getAlpha());
   }
-  /* There is no `else` any more: "Shaded cells" (steepStyle "fill") was REMOVED 2026-08-07 (David),
-     so steepStyle is only ever "rings" or "course" and the two branches above are exhaustive.
-     setSteepStyle() and the ?st= reader both enforce that, mapping the legacy "fill" onto "rings". */
+  /* The final `else` is "course", not a fallback: "Shaded cells" (steepStyle "fill") was REMOVED
+     2026-08-07 (David), so steepStyle is only ever "rings", "height" or "course" and the three
+     branches above are exhaustive. setSteepStyle() and the ?st= reader both enforce that, mapping the
+     legacy "fill" onto "rings". */
   $("legend").innerHTML=s;
 }
 const NOTES={
   current:"Covers Puget Sound → Queen Charlotte Sound (south edge — <b>Haida Gwaii is outside SSCOFS</b>). Zoomed out: whole-coast ~2 km overview; zoom in (≥ z10): native FVCOM mesh tiles (~40–90 m in narrows) load automatically for the water in view. Arrows show <b>set</b> (where the water goes). SSCOFS is a model — official CHS/NOAA predictions remain authoritative at the tightest narrows.",
   wind:"HRDPS 2.5 km whole-extent field, one resolution at every zoom (there is no finer wind tile). Arrows point <b>downwind</b> (the model stores the direction the wind blows <i>from</i>). Wind is drawn over land as well as water, so read the fill only where there is water — the base map shows through it rather than being overdrawn, and land reads lighter than water. Beaufort bins match the standalone wind map exactly.",
-  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. Two displays, switched with <b>Sea State</b>: <b>Wave Steepness</b> draws the full HRDPS wind field with a ring + cyan current arrow wherever the current is steepening the sea, from <b>Medium</b> upward — there is no Low ring, so unringed water is <b>unrated, not calm</b>; <b>Quartering (beta)</b> marks the worst heading to be steering, direction only. Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
+  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. Three displays, switched with <b>Sea State</b>: <b>Wave Steepness</b> draws the full HRDPS wind field with a ring + cyan current arrow wherever the current is steepening the sea, from <b>Medium</b> upward — there is no Low ring, so unringed water is <b>unrated, not calm</b>; <b>Quartering (beta)</b> marks the worst heading to be steering, direction only; <b>Wave Height</b> paints the wind-sea height itself in metres, on a continuous scale, with the opposing current's amplification applied — <b>wind sea only, no ocean swell</b>. Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
 };
-// Per-mode hint, plus the roughness withdrawal notice while the layer is off. It rides along under
-// every mode on purpose: NOTES.steep is unreachable once the option is disabled, so this is the only
-// desktop surface the explanation has. Drop the second term when STEEP_ON goes back to true.
-function setNote(){ $("note").innerHTML = NOTES[mode] + (STEEP_ON ? "" : STEEP_WITHDRAWN_NOTE); }
+// Per-mode hint. The withdrawal notice that used to ride along under every mode was dropped
+// 2026-08-08 when the layer went public again — NOTES.steep is reachable now.
+function setNote(){ $("note").innerHTML = NOTES[mode]; }
 function buildBaseSelect(){
   const md=MODES[mode], sel=$("base");
   // The <select> is never shown (#baseFld is display:none for everyone, 2026-08-07) — it survives only
@@ -1898,7 +2067,7 @@ function ensureLayer(){
 }
 function setSteepStyle(v){
   if(v==="fill") v="rings";                 // "Shaded cells" removed 2026-08-07 — legacy ?st=fill links
-  if(v===steepStyle || (v!=="rings"&&v!=="course")) return;
+  if(v===steepStyle || (v!=="rings"&&v!=="course"&&v!=="height")) return;
   steepStyle=v;
   if(steepTile) steepTile.decodedHour=-1;   // spd3 holds different bands per display → force a re-decode
   updateSteepControls();
@@ -1998,15 +2167,15 @@ refreshOfflineUI();
 
 // Adopt ?mode= before the first base map / GL uniforms / tile pass, so a wind bookmark never pays
 // for the currents stack on the way in. A stale mode is corrected in boot() once manifests land.
-// Withdrawn: the option STAYS in the menu, disabled and relabelled, so a returning user reads why
-// the layer is gone instead of finding it silently missing (David's choice, 2026-08-04). NOT hidden.
-if(!STEEP_ON){ const o=$("mode").querySelector('option[value="steep"]');
-  o.disabled=true; o.textContent=STEEP_WITHDRAWN_OPT; }
+// If STEEP_ON is ever flipped back to false the option STAYS in the menu, disabled, so a returning
+// user finds it rather than having it silently vanish (David's choice, 2026-08-04). NOT hidden.
+if(!STEEP_ON) $("mode").querySelector('option[value="steep"]').disabled=true;
 { const q=new URLSearchParams(location.search), m=q.get("mode");
   if(m && MODES[m] && !(m==="steep"&&!STEEP_ON)) mode=m;
   // ?st= before applyMode/alphaRef. "fill" (Shaded cells) was removed 2026-08-07 but is still honoured
   // as an alias for "rings" so links shared before then land on a display that exists.
   const st=q.get("st"); if(st==="rings"||st==="fill") steepStyle="rings"; else if(st==="course") steepStyle="course";
+  else if(st==="height") steepStyle="height";     // Wave Height (2026-08-07)
   const co=parseFloat(q.get("course")); if(isFinite(co)) course=((co%360)+360)%360;
   $("mode").value=mode;
   const a=parseFloat(q.get("a"));                  // applies to the URL's mode+display (see updateURL)
@@ -2022,10 +2191,8 @@ if(matchMedia("(max-width:640px)").matches){
   const modeSel=$("mode");
   modeSel.querySelector('option[value="current"]').textContent="Currents";
   modeSel.querySelector('option[value="wind"]').textContent="Wind";
-  // Withdrawn: keep the (shorter) withdrawal wording — the phone has no .note and no header blurb,
-  // so this option label is the only place the message lands. Don't let the phone pass overwrite it.
   modeSel.querySelector('option[value="steep"]').textContent =
-    STEEP_ON ? "Roughness (beta)" : STEEP_WITHDRAWN_PHONE;
+    "Waves";   // renamed 2026-08-07 (David); matches the desktop <option>
 }
 // ?base= overrides the default base for the URL's mode. Read AFTER the phone pin so it wins there too.
 // Now that the Base control is hidden on every screen this is the ONLY route to the Esri-terrain
