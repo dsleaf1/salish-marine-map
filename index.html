@@ -965,18 +965,35 @@ function drawSteepRings(){
   const ctx=arc.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
   if(!steepTile||!steepTile.ready) return;
   if($("windArrows").checked) drawWindArrowsOn(ctx);      // white wind barbs UNDER the rings
-  decodeTile(steepTile);
-  const t=steepTile, b=map.getBounds(), W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth();
+  decodeTile(steepTile);        // still needed: the tap readout reads wind/Hs/Tp/fetch off this tile
+  /* 0.56 km baked band when this hour is in the bake, else the 2.2 km client-computed tile. Both
+     expose the same six fields the ring pass reads, so the choice is one assignment. ⚠ The ring
+     positions move with it: a fine ring sits on its own 0.56 km cell centre, not on the 2.2 km
+     centre, so the two paths do NOT put marks in the same places. */
+  let t=steepTile, fineHr=-1;
+  if(STEEP_FINE_ON && steepFine && steepFine.ready){
+    fineHr=steepFine.hourAt(hour);
+    if(fineHr>=0){ steepFine.decode(fineHr); t=steepFine; }
+  }
+  const b=map.getBounds(), W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth();
   const tp=+$("arrows").value, spacing=tp?Math.max(tp*2.4,42):50, showArrows=tp>0;
   const buck=new Map();
+  let cand=0;
   for(let i=0;i<t.ne;i++){
     const band=t.band[i]; if(band<2) continue;   // Low removed 2026-08-07 — RING[0] and RING[1] are null
     const lo=t.cx[i], la=t.cy[i]; if(lo<W||lo>E||la<S||la>N) continue;
     const p=map.latLngToContainerPoint([la,lo]);
     const key=((p.x/spacing)|0)*99999+((p.y/spacing)|0);
-    const cur=buck.get(key);
+    const cur=buck.get(key); cand++;
     if(!cur||band>cur.band||(band===cur.band&&t.spd[i]>cur.spd)) buck.set(key,{i,band,spd:t.spd[i],p});
   }
+  /* Measurement hook for the 0.56 km A/B (local dev only). 🚨 THE POINT: the rings are decimated
+     into SCREEN buckets and the WORST band in a bucket wins, so what reaches the eye is bounded by
+     screen geometry, not by cell count. `cand` (cells that qualified) vs `buck.size` (marks drawn)
+     is the ratio that says how much of the finer grid the display actually shows. */
+  window.__ringStats={source:t===steepFine?"0.56 km baked":"2.2 km client", fineHr,
+                      cells:t.ne, candidates:cand, drawn:buck.size, spacing,
+                      zoom:map.getZoom(), hour, ts:TIMES&&TIMES[hour]};
   for(const {i,band,spd,p} of buck.values()){
     const rs=RING[band];
     ctx.globalAlpha=rs.a; ctx.strokeStyle=rs.col; ctx.lineWidth=rs.lw;
@@ -1241,11 +1258,18 @@ function doHover(){
       // Bands 0–1 are no longer NAMED (the Low call was removed 2026-08-07): below band 2 the readout
       // says the layer has nothing to report rather than reporting "Low", which read as a reassurance.
       // The wind / current / wind-sea / fetch numbers below still print — the tap is never empty.
-      const band=Math.max(0,t.band[m]|0), quiet=band<2, col=quiet?"#9fb3c8":RING[Math.min(band,4)].col;
+      /* 🔑 THE BAND AND THE CURRENT COME FROM THE 0.56 KM BAKE WHEN IT COVERS THIS SPOT AND HOUR
+         (fineLookup, added 2026-08-13e) — the same grid drawSteepRings draws on, so a tapped ring
+         reads back ITS OWN answer. Everything else on this panel stays on the 2.2 km tile; see the
+         scope note on fineLookup for why, and for the measurement that says this pairing is
+         coherent. Null ⇒ not baked here, or this hour rolled out of the bake ⇒ 2.2 km, as before. */
+      const fine=fineLookup(lat,lon), fcur=fine&&!isNaN(fine.spd);
+      const band=fine?fine.band:Math.max(0,t.band[m]|0), quiet=band<2, col=quiet?"#9fb3c8":RING[Math.min(band,4)].col;
+      const cSpd=fcur?fine.spd:t.spd[m], cDir=fcur?fine.dir:t.dir[m];
       html=`<b>Roughness — ${quiet?"nothing reported here":RING_WORD[Math.min(band,4)]}</b>`
         +`<div class="hz" style="color:${col}">${quiet?"Below the layer's reporting threshold — read the numbers below, not this line, and treat it as unrated rather than calm":RING_LBL[Math.min(band,4)]}</div>`
         +row("Wind", `${Math.round(t.wKt[m])} kt from ${compass(t.wFrom[m])} (${Math.round(t.wFrom[m])}°)`)
-        +row("Current", t.spd[m]>=0.1?`${t.spd[m].toFixed(1)} kt toward ${compass(t.dir[m])} (${Math.round(t.dir[m])}°)`:"slack (&lt;0.1 kt)")
+        +row("Current", cSpd>=0.1?`${cSpd.toFixed(1)} kt toward ${compass(cDir)} (${Math.round(cDir)}°)`:"slack (&lt;0.1 kt)")
         +row("Wind-sea", t.Hs[m]>0.05?`${t.Hs[m].toFixed(1)} m @ ${t.Tp[m].toFixed(1)} s`:"negligible")
         +row("Fetch", `${t.fUse[m]>=60?"≥60":t.fUse[m].toFixed(0)} km upwind`);
       }
@@ -1920,6 +1944,194 @@ async function loadSteepOnce(){
   t.fetchKm=fetchKm;                     // kept for hover readout / verification
   t.ready=true; steepTile=t; render(); setStatus(loadedSummary());
 }
+/* ═══ 0.56 km BAKED STEEPNESS BAND — THE CLIENT READER (Route B; digests #133–#135) ═══════════
+   🔴 LOCAL ONLY, 2026-08-13. NOT deployed, NOT copied to salish, NOT pushed. The DO-NOT-DEPLOY
+   comment on this file still stands.
+
+   WHAT THIS READS. hrdps-ingest/steep_bake.mjs scores the steepness band on the SSCOFS 0.56 km
+   grid and parks the answer in R2 under sscofs/steep/. Per zone, three files:
+     <zone>.src.bin   cols×rows bytes, the SOURCE of each cell's current (0 = not scored,
+                      1 = 0.56 km surface field, 2 = FVCOM mesh, 3 = 2.2 km overview). This plane
+                      is also the INDEX: the scored cells are its non-zero bytes in plane order
+                      (row-major, row 0 = NORTH), and that same order indexes the other two files.
+     <zone>.bin       hours × scoredCells band bytes. 0–4 = band, 254 = scored but negligible sea
+                      (physics band −1), 255 = no current data / land.
+     <zone>.exp.bin   the "explain this ring" record, SPARSE and INDEX-FREE: per hour, N current
+                      speed bytes (kt×10) then N direction bytes (×360/255, TOWARD), where N is
+                      the number of cells that ring in that hour. No index is needed because the
+                      band plane already says which cells those are — walk them in the same order.
+   ⚠ The packing holds SCORED CELLS ONLY, not rectangles. Land is 71–86% of these boxes and its
+   constant bytes interleave between rows of real water, which breaks gzip's runs: rectangles
+   measured 2.4× the bytes (724 KB vs 219 KB). ⛔ Do not "simplify" this back to a rectangle.
+
+   WHY THE RING DISPLAY NEEDS SO LITTLE OF IT. drawSteepRings() is a 2D-canvas pass that reads only
+   `ne / cx / cy / band / spd / dir` — no WebGL geometry (the fill underneath is the WIND tile).
+   And it reads spd/dir ONLY for cells with band ≥ 2, which is exactly the set the sparse explain
+   record covers. So this reader builds five flat arrays and nothing else.
+
+   🔑 THE FALLBACK IS A FIRST-CLASS PATH, NOT AN ERROR PATH. The bake is a FIXED pairing of one
+   current run with one wind run; the map re-pairs whatever it has, including offline packs. So a
+   baked hour simply may not exist. hourAt() returns −1 for any hour not on the bake's own axis and
+   the ring pass falls back to the 2.2 km client-computed tile for that hour — which stays loaded
+   and decoded regardless, because the tap readout reads wind/Hs/Tp/fetch from it and NONE of those
+   are baked. ⇒ two ring densities depending on network state, by design; see digest #134.
+   ⚠ NOT YET TAKEN: the coarse tile is still decoded every hour, so this build does not yet realise
+   the "the load-time fetch march disappears" win. Deliberate — correctness of the A/B first. */
+const qparam = k => new URLSearchParams(location.search).get(k);
+const STEEP_FINE_BASE = qparam("steepbase") || (R2+"/sscofs/steep");
+// ?fine=0 forces the 2.2 km path. Mutable so the A/B can be swept from the console over many
+// views without a reload — flipping it changes only which field drawSteepRings() reads.
+let STEEP_FINE_ON = qparam("fine") !== "0";
+let steepFine=null, steepFineLoading=null, steepFineErr=null;
+const loadSteepFine=()=>steepFineLoading||(steepFineLoading=loadSteepFineOnce().catch(e=>{
+  steepFineErr=e.message||String(e); steepFine=null;    // stay silent on screen: the 2.2 km path covers
+  console.warn("[steep 0.56 km] unavailable, falling back to the 2.2 km path:", e); }));
+
+async function loadSteepFineOnce(){
+  const grab=async(n,json)=>{ const r=await fetch(STEEP_FINE_BASE+"/"+n,{cache:"no-store"});
+    if(!r.ok) throw new Error(n+": HTTP "+r.status);
+    if(json) return r.json();
+    let b=new Uint8Array(await r.arrayBuffer());
+    // R2 sets Content-Encoding: gzip and fetch inflates for us; a plain local file server does not.
+    return (b[0]===0x1f&&b[1]===0x8b) ? await gunzip(b) : b; };
+  const man=await grab("manifest.json",true);
+  const H=man.hours.length, RMIN=man.ring_min_band;
+  const names=Object.keys(man.zones);
+  const planes=await Promise.all(names.map(async n=>{ const z=man.zones[n];
+    const [src,band,exp]=await Promise.all([grab(z.src),grab(z.file),grab(z.exp)]);
+    return {n,z,src,band,exp}; }));
+
+  // Pass 1: build each zone's LUT from the source plane. Every plane walk below MUST use this full
+  // LUT, duplicates included, because the sparse explain record was written against it.
+  const zones=[];
+  for(const {n,z,src,band,exp} of planes){
+    if(src.length!==z.cols*z.rows) throw new Error(n+": src plane "+src.length+" ≠ "+z.cols+"×"+z.rows);
+    const lut=new Int32Array(z.scored_cells); let p=0;
+    for(let j=0;j<src.length;j++) if(src[j]) lut[p++]=j;
+    if(p!==z.scored_cells) throw new Error(n+": LUT "+p+" ≠ manifest scored_cells "+z.scored_cells);
+    if(band.length!==p*H) throw new Error(n+": band plane "+band.length+" ≠ "+p+"×"+H);
+    zones.push({name:n,z,src,band,exp,lut,n:p});
+  }
+  /* 🚨 ZONE OVERLAP — THE BAKE DOUBLE-COUNTS AND THE CLIENT HAS TO UNDO IT (found 2026-08-13, in
+     the first real render). STEEP_ZONES boxes INTERSECT — ejdf×sanjuan, puget×ejdf, sanjuan×georgia,
+     georgia×discovery, discovery×johnstone — and steep_bake.mjs emits one plane PER ZONE, so water
+     in two boxes is baked twice. Measured over this bake: 136,423 records but only 98,706 DISTINCT
+     positions ⇒ 37,717 duplicates = 27.6%.
+     ✅ The duplicates AGREE EXACTLY — 0 band disagreements and 0 source-byte disagreements over
+     1,734,982 duplicated cell-hours — so this is pure redundancy, never a contradiction. (That is
+     also an independent confirmation that steep_mask.mjs's full-60 km padding works: zone
+     membership does not change the fetch, so it does not change the band.)
+     🔑 AND IT CORRECTS THE RECORD: 98,706 ≈ #133's ~99,000 extrapolation. The "domain is 38% bigger
+     than extrapolated" finding in digest #135 was this double-count, not new water.
+     ⚠ The right fix is upstream — have the baker claim each cell for ONE zone (~33% off the wire,
+     and provably no value changes). Until then the client keeps the FIRST zone's copy; the old
+     2.2 km path already behaved this way, because inSteepZone() is a some() test over the boxes. */
+  const owner=new Map();
+  for(const zn of zones){
+    const {z,lut}=zn, [W,S,E,Nb]=z.bbox;
+    const stepLon=(E-W)/(z.cols-1), stepLat=(Nb-S)/(z.rows-1);
+    zn.stepLon=stepLon; zn.stepLat=stepLat;
+    zn.gidx=new Int32Array(zn.n).fill(-1);
+    for(let m=0;m<zn.n;m++){ const cell=lut[m], r=(cell/z.cols)|0, c=cell%z.cols;
+      const lon=W+c*stepLon, lat=Nb-r*stepLat;
+      const k=Math.round(lon*1000)+"_"+Math.round(lat*1000);
+      if(!owner.has(k)){ owner.set(k,1); zn.gidx[m]=owner.size-1; } }
+  }
+  const N=owner.size, dropped=zones.reduce((s,z)=>s+z.n,0)-N;
+  // Pass 2: geometry, source byte, and the per-hour cursor into the sparse explain record. The
+  // cursor has to be precomputed because the record carries no index — hour h's bytes start where
+  // every earlier hour's rings ended, so the ring counts are the offsets.
+  const cx=new Float32Array(N), cy=new Float32Array(N), src=new Uint8Array(N);
+  let ringTotal=0;
+  for(const zn of zones){
+    const {z,lut}=zn, [W,S,E,Nb]=z.bbox;
+    for(let m=0;m<zn.n;m++){ const g=zn.gidx[m]; if(g<0) continue;
+      const cell=lut[m], r=(cell/z.cols)|0, c=cell%z.cols;
+      cx[g]=W+c*zn.stepLon; cy[g]=Nb-r*zn.stepLat; src[g]=zn.src[cell]; }
+    const ringN=new Int32Array(H), hourOff=new Int32Array(H);
+    let k=0;
+    for(let h=0;h<H;h++){ const base=h*zn.n; let R=0;
+      for(let m=0;m<zn.n;m++){ const v=zn.band[base+m]; if(v>=RMIN&&v<=4) R++; }
+      ringN[h]=R; hourOff[h]=k; k+=2*R; }
+    if(k!==zn.exp.length) throw new Error(zn.name+": explain record is "+zn.exp.length+" B, the walk consumed "+k);
+    zn.ringN=ringN; zn.hourOff=hourOff; ringTotal+=k/2;
+  }
+  const hmap=new Map(man.hours.map((v,i)=>[v,i]));
+  const t={key:"steepFine",man,ready:true,ne:N,cx,cy,src,zones,H,RMIN,
+           band:new Float32Array(N),spd:new Float32Array(N),dir:new Float32Array(N),
+           decodedHour:-1};
+  // −1 = this hour is not in the bake (a rolled run, or an offline pairing) ⇒ use the 2.2 km path.
+  t.hourAt=h=>{ const i=hmap.get(TIMES[h]); return i===undefined?-1:i; };
+  t.decode=hi=>{
+    if(t.decodedHour===hi) return; t.decodedHour=hi;
+    for(const zn of t.zones){
+      const base=hi*zn.n, R=zn.ringN[hi], k=zn.hourOff[hi], exp=zn.exp, gidx=zn.gidx;
+      // ⚠ ri must advance over EVERY ringing cell in the zone, owned or not: the explain record
+      // was written against the full plane order, so skipping a duplicate would desynchronise it.
+      let ri=0;
+      for(let m=0;m<zn.n;m++){
+        const v=zn.band[base+m], g=gidx[m], ring=(v>=t.RMIN&&v<=4);
+        if(ring) ri++;
+        if(g<0) continue;                                              // duplicate: another zone owns it
+        if(v>4){ t.band[g]=-1; t.spd[g]=NaN; t.dir[g]=NaN; continue; } // 254 negligible, 255 dry
+        t.band[g]=v;
+        if(ring){ t.spd[g]=exp[k+ri-1]/10; t.dir[g]=exp[k+R+ri-1]*360/255; }
+        else { t.spd[g]=NaN; t.dir[g]=NaN; }
+      }
+    }
+  };
+  console.log(`[steep 0.56 km] ${N.toLocaleString()} distinct cells (${dropped.toLocaleString()} `+
+              `cross-zone duplicates dropped) · ${H} h · field ${man.run_field} · `+
+              `hrdps ${man.run_hrdps} · physics ${man.physics.modelHash} · `+
+              `${ringTotal.toLocaleString()} ringed cell-hours in the record`);
+  steepFine=t; render(); return t;
+}
+/* ---- the tap readout on the 0.56 km grid (2026-08-13e) ----------------------------------------
+   drawSteepRings moved the rings onto the baked 0.56 km cells but doHover kept reading the 2.2 km
+   tile, so a tapped ring answered for a square whose centre can be over a kilometre away.
+   📏 MEASURED at Cattle Pass, 40 h × 398 cells = 1,191 ring cell-hours: WITHOUT this, 19.2% of
+   drawn rings would report "nothing reported here" and a further 12.2% a LOWER severity than the
+   ring they belong to. Only 60.0% agreed. That is #134's own argument turned on the display —
+   "the mark contradicts its own explanation" reads as the map being broken, which costs more
+   belief than a mark that is merely over-cautious.
+   🔑 SCOPE IS DELIBERATELY NARROW: this supplies the BAND and the CURRENT, and only to the rings
+   readout. Wind / wind-sea / fetch stay on the 2.2 km tile because they were never baked — a full
+   0.56 km readout was priced at ~9 MB and rejected (#134). ⛔ Do NOT extend this to the Quartering
+   or Wave Height panels: both are computed at 2.2 km FROM the 2.2 km current, so swapping in a
+   finer current would make those panels disagree with their own numbers — the very failure this
+   is here to remove.
+   ✅ The mixed pairing was checked for coherence before shipping: over those same 1,191 ring
+   cell-hours the 2.2 km wind-sea is NEVER negligible under a fine ring (min 0.06 m, median
+   0.18 m), so this cannot print "Wind-sea negligible" beneath a Very high ring.
+   ⚠ KNOWN GAP, NOT FIXED HERE: where the 2.2 km grid says LAND, doHover never reaches this code
+   (its wet-cell gate is on the coarse tile), so a ring drawn on the ~6.4% of fine water the coarse
+   grid calls dry still taps silent. Fixing that needs a readout with no wind/fetch behind it. */
+const FINE_SNAP_DEG=0.005;      // ~550 m; a 0.005° cell is 353 m E-W × 553 m N-S at 50.6°N
+let fineIdx=null, fineIdxFor=null;
+function fineLookup(lat,lon){
+  if(!(STEEP_FINE_ON && steepFine && steepFine.ready)) return null;
+  const t=steepFine, fh=t.hourAt(hour);
+  if(fh<0) return null;                       // hour not in the bake (rolled run / offline pairing)
+  t.decode(fh);
+  // Bucket the 98,706 cells onto the 0.02° grid ONCE per tile — a linear scan here would run on
+  // every throttled hover (up to 10/s) and this is the phone's path.
+  if(fineIdxFor!==t){
+    fineIdx=new Map();
+    for(let i=0;i<t.ne;i++){ const k=Math.round(t.cx[i]/0.02)+","+Math.round(t.cy[i]/0.02);
+      let a=fineIdx.get(k); if(!a) fineIdx.set(k,a=[]); a.push(i); }
+    fineIdxFor=t;
+  }
+  const gx=Math.round(lon/0.02), gy=Math.round(lat/0.02), cosm=Math.cos(lat*Math.PI/180);
+  let best=-1, bd=FINE_SNAP_DEG*FINE_SNAP_DEG;
+  for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){
+    const a=fineIdx.get((gx+dx)+","+(gy+dy)); if(!a) continue;
+    for(const i of a){ const dlo=(t.cx[i]-lon)*cosm, dla=t.cy[i]-lat, d=dlo*dlo+dla*dla;
+      if(d<bd){ bd=d; best=i; } } }
+  // band −1 = the bake called this cell negligible OR dry, and the two are not distinguishable in
+  // the decoded plane. Fall back to the 2.2 km tile rather than assert calm off an ambiguous byte.
+  if(best<0 || t.band[best]<0) return null;
+  return {band:t.band[best]|0, spd:t.spd[best], dir:t.dir[best]};
+}
 function setQuad(a,m,v){ const b=m*6; a[b]=v;a[b+1]=v;a[b+2]=v;a[b+3]=v;a[b+4]=v;a[b+5]=v; }
 function updateTiles(){
   if(!meshMan || !MODES[mode].mesh) return;
@@ -2115,7 +2327,14 @@ function buildLegend(){
 const NOTES={
   current:"Covers Puget Sound → Queen Charlotte Sound (south edge — <b>Haida Gwaii is outside SSCOFS</b>). Zoomed out: whole-coast ~2 km overview; zoom in (≥ z10): native FVCOM mesh tiles (~40–90 m in narrows) load automatically for the water in view. Arrows show <b>set</b> (where the water goes). SSCOFS is a model — official CHS/NOAA predictions remain authoritative at the tightest narrows.",
   wind:"HRDPS 2.5 km whole-extent field, one resolution at every zoom (there is no finer wind tile). Arrows point <b>downwind</b> (the model stores the direction the wind blows <i>from</i>). Wind is drawn over land as well as water, so read the fill only where there is water — the base map shows through it rather than being overdrawn, and land reads lighter than water. Beaufort bins match the standalone wind map exactly.",
-  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. Three displays, switched with <b>Sea State</b>: <b>Wave Steepness</b> draws the full HRDPS wind field with a ring + cyan current arrow wherever the current is steepening the sea, from <b>Medium</b> upward — there is no Low ring, so unringed water is <b>unrated, not calm</b>; <b>Quartering (beta)</b> marks the worst heading to be steering, direction only; <b>Wave Height</b> paints the wind-sea height itself in metres, on a continuous scale, with the opposing current's amplification applied — <b>wind sea only, no ocean swell</b>. Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
+  /* 🔴 THE CURRENT-SOURCE SENTENCE BELOW DESCRIBES BEHAVIOUR THAT IS NOT BUILT YET.
+     David approved this wording 2026-08-12c (draft B) and approved the plume box
+     [W -123.33, S 49.00, E -123.10, N 49.25], but the two-source current read itself is
+     still unimplemented — today every steepness cell is fed the coarse overview.
+     ⛔ DO NOT DEPLOY unified_map.html until the box ships, or the panel claims something
+     the map does not do. Scope of the 2026-08-12c edit was LOCAL ONLY, deliberately:
+     nothing copied to salish, no sw.js CACHE_VERSION bump, nothing pushed. */
+  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. Three displays, switched with <b>Sea State</b>: <b>Wave Steepness</b> draws the full HRDPS wind field with a ring + cyan current arrow wherever the current is steepening the sea, from <b>Medium</b> upward — there is no Low ring, so unringed water is <b>unrated, not calm</b>; <b>Quartering (beta)</b> marks the worst heading to be steering, direction only; <b>Wave Height</b> paints the wind-sea height itself in metres, on a continuous scale, with the opposing current's amplification applied — <b>wind sea only, no ocean swell</b>. <b>Where the current comes from:</b> everywhere on this map the current is the model's own fine mesh, which resolves narrow passes best. Over the <b>Fraser River mouth</b> — roughly Point Grey south past Sand Heads to the delta — the map switches to a separate grid read at the <b>very surface</b>. Fresh river water slides over salt there, so the top metre or two can run a couple of knots faster than the water just below, and it is the surface that the waves feel. Everywhere else the two sources agree closely, so the switch makes no visible difference. Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
 };
 // Per-mode hint. The withdrawal notice that used to ride along under every mode was dropped
 // 2026-08-08 when the layer went public again — NOTES.steep is reachable now.
@@ -2174,6 +2393,9 @@ function applyMode(){
 // 1.7 MB currents overview, and a currents session never pays the 3.4 MB wind tile.
 function ensureLayer(){
   if(!meshMan) return;                                   // manifests not in yet; boot() will call us
+  // The baked 0.56 km band is INDEPENDENT of the two fields — it is its own fetch and needs neither,
+  // so it starts here in parallel and never blocks the layer. If it fails the 2.2 km path covers.
+  if(mode==="steep" && STEEP_FINE_ON) loadSteepFine();
   // Steepness needs BOTH fields; loadSteep awaits them. Wind and currents each need only their own.
   const pending = mode==="steep" ? (steepTile?null:loadSteep)
                 : mode==="wind"  ? (windTile?null:loadWind)
