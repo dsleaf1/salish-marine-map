@@ -188,7 +188,7 @@ function hazSpec(Hs,Tp,dirFrom,curKt,curToward,fast){
   if(!(Hs>0.05)||!(Tp>0)) return {band:-1,S:0,hf:1,Hamp:0,Uopp:0,c0,L0:c0*Tp,fBrk:0,gateH:0};
   const Uopp=Math.max(0,Math.abs(curKt)*KT*Math.cos((curToward-dirFrom)*Math.PI/180));
   const now=specCore(Hs,Tp,Uopp);
-  let band=now.S>=0.143?4:now.S>=0.10?3:now.S>=0.075?2:now.S>=0.05?1:0;
+  let band=(now.fBrk>=1||now.S>=1/7)?4:now.S>=0.10?3:now.S>=0.075?2:now.S>=0.05?1:0;
   if(fast&&(band<2||now.gateH>=0.5))
     return {band,S:Math.min(now.S,0.2),hf:now.hf,Hamp:now.Hamp,fBrk:now.fBrk,Uopp,c0,L0:c0*Tp,gateH:now.gateH};
   let gateH=0; const top=Math.ceil(Uopp/0.05)*0.05+1e-9;

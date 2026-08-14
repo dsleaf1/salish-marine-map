@@ -612,7 +612,7 @@ const PTL=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Vancouver',weekday:
 // zoomAnimation off keeps the WebGL overlay perfectly registered with the tiles
 // Lock the view to the model: can't zoom out past the SSCOFS extent or pan off it.
 const map=L.map("map",{zoomAnimation:false,fadeAnimation:false,
-  maxBounds:L.latLngBounds(FULL_EXTENT).pad(0.12),maxBoundsViscosity:1.0});
+  maxBounds:L.latLngBounds([[46.85,-129.1],[51.75,-122.35]]),maxBoundsViscosity:1.0});
 // The bookmarked ?lat/lon/z(/h), captured ONCE at script time: updateURL() starts rewriting the
 // query string as soon as the map first moves, so a later reader sees its own echo — h was the
 // cold-load restore miss's other half (a slow manifest fetch let updateURL overwrite ?h with 0
@@ -983,7 +983,8 @@ function drawSteepRings(){
     const band=t.band[i]; if(band<2) continue;   // Low removed 2026-08-07 — RING[0] and RING[1] are null
     const lo=t.cx[i], la=t.cy[i]; if(lo<W||lo>E||la<S||la>N) continue;
     const p=map.latLngToContainerPoint([la,lo]);
-    const key=((p.x/spacing)|0)*99999+((p.y/spacing)|0);
+    const proj=map.project([la,lo]);
+    const key=((proj.x/spacing)|0)*99999+((proj.y/spacing)|0);
     const cur=buck.get(key); cand++;
     if(!cur||band>cur.band||(band===cur.band&&t.spd[i]>cur.spd)) buck.set(key,{i,band,spd:t.spd[i],p});
   }
@@ -1082,6 +1083,25 @@ function nearestCell(t,lat,lon,maxDeg){
   for(let i=0;i<t.ne;i++){ const dlo=(t.cx[i]-lon)*cosm, dla=t.cy[i]-lat, d=dlo*dlo+dla*dla;
     if(d<bd){ bd=d; best=i; } }
   return best;
+}
+/* How far the readout may reach for a BORROWED wind when the 2.2 km tile has no wet cell at the tap
+   but the 0.56 km bake does — the shoreline / narrow-pass case handled in doHover. 0.03° of latitude
+   = 3.3 km, i.e. a little over ONE cell of the 2.5 km HRDPS wind field the number comes from, so the
+   borrow never leaves the wind model's own resolution.
+   ⚠ Deliberately NOT a general widening of SNAP_DEG. David rejected snapping a whole readout
+   kilometres to a distant cell (the Q-rose-on-land bug the note above SNAP_DEG describes); this is
+   the narrow exception to that — ONE scalar, distance-capped, and labelled on screen with how far
+   it came. Everything else on that panel is either read at the tap or omitted. */
+const WIND_BORROW_DEG=0.03;
+/* Nearest cell that actually HAS wind. Separate from nearestCell() because that one returns the
+   nearest cell full stop and leaves the caller to test it — here a dry nearest cell must not veto a
+   wet one 300 m further on, which is the whole situation this exists for. */
+function nearestWetCell(t,lat,lon,maxDeg){
+  let best=-1, bd=maxDeg*maxDeg, cosm=Math.cos(lat*Math.PI/180);
+  for(let i=0;i<t.ne;i++){ if(t.wKt[i]!==t.wKt[i]) continue;         // NaN = dry, skip
+    const dlo=(t.cx[i]-lon)*cosm, dla=t.cy[i]-lat, d=dlo*dlo+dla*dla;
+    if(d<bd){ bd=d; best=i; } }
+  return best<0 ? null : { i:best, km:Math.sqrt(bd)*111.32 };
 }
 let hoverLL=null, hoverEv=null, hoverRAF=0;
 /* DWELL DELAY before the readout OPENS (added 2026-08-09, David: "the pop up response to the mouse
@@ -1196,6 +1216,7 @@ function doHover(){
   const lat=hoverLL.lat, lon=hoverLL.lng; let html=null;
   if(mode==="steep" && steepTile&&steepTile.ready){
     decodeTile(steepTile); const t=steepTile, m=nearestCell(t,lat,lon,SNAP_DEG);
+    let fineOnly=null;                                      // set by the shoreline branch's own test
     if(m>=0 && t.wKt[m]===t.wKt[m]){                        // wet cell (not NaN)
       if(steepStyle==="course" && t.qComps && t.qComps[m]){
         /* No band word and no band colour here any more (§11): qBand turned an uncalibrated index
@@ -1273,6 +1294,58 @@ function doHover(){
         +row("Wind-sea", t.Hs[m]>0.05?`${t.Hs[m].toFixed(1)} m @ ${t.Tp[m].toFixed(1)} s`:"negligible")
         +row("Fetch", `${t.fUse[m]>=60?"≥60":t.fUse[m].toFixed(0)} km upwind`);
       }
+    } else if(steepStyle==="rings" && (fineOnly=fineLookup(lat,lon))){
+      /* SHORELINE / NARROW-PASS TAP — the silent-tap fix (David's call 2026-08-14, "option 2" of the
+         three put to him). The gate above is on the 2.2 km tile, and it fails in exactly the places
+         the 0.56 km bake was ADDED for: passes and shorelines where the coarse grid has no wet cell
+         within SNAP_DEG at all (Weynton and Gillard have LAND at the centre of their 2.2 km square).
+         🚨 WHAT IT USED TO DO, and why this is not cosmetic: html stayed null, so doHover's
+         `if(!html){ hideTip(); return; }` below dismissed the panel and NOTHING OPENED. A ring the
+         map had just drawn answered a tap by looking frozen. ⚠ It did NOT say "nothing reported
+         here" — that is the band<2 readout in the branch above, which is deliberate and fine. The
+         map never asserted calm; it read as an unresponsive app, which teaches people to stop
+         tapping the layer at all.
+         WHAT PRINTS, AND WHAT IS DELIBERATELY OMITTED:
+           · Band and Current come from the fine bake AT THIS SPOT — same source the ring was drawn
+             from, so a tapped ring still reads back its own answer.
+           · Wind is BORROWED from the nearest coarse cell that has one, capped at WIND_BORROW_DEG
+             and labelled on screen with the distance. Wind is the flattest of the three coarse
+             fields over a kilometre — it comes off a 2.5 km grid, so the borrow stays inside the
+             wind model's own cell — and it is the one number a paddler would act on.
+           · Wind-sea and Fetch are OMITTED, not borrowed. Fetch is upwind distance FROM THIS POINT
+             and is worst-behaved precisely where this branch fires (headlands, channel mouths), and
+             Hs is built from fetch — borrowing either would print a shoreline-specific quantity
+             computed somewhere else as though it had been measured at the tap.
+         ⛔ Gated to steepStyle "rings" on purpose: Quartering and Wave Height are computed at 2.2 km
+         FROM the 2.2 km current, and the fine bake holds no answer for them. Do not extend it. */
+      const band=fineOnly.band|0, quiet=band<2, col=quiet?"#9fb3c8":RING[Math.min(band,4)].col;
+      const w=nearestWetCell(t,lat,lon,WIND_BORROW_DEG), fcur=!isNaN(fineOnly.spd);
+      html=`<b>Roughness — ${quiet?"nothing reported here":RING_WORD[Math.min(band,4)]}</b>`
+        +`<div class="hz" style="color:${col}">${quiet?"Below the layer's reporting threshold — read the numbers below, not this line, and treat it as unrated rather than calm":RING_LBL[Math.min(band,4)]}</div>`
+        +row("Wind", w
+            ? `${Math.round(t.wKt[w.i])} kt from ${compass(t.wFrom[w.i])} (${Math.round(t.wFrom[w.i])}°)`
+              +` <span style="opacity:.6">— nearest reported square, ${w.km.toFixed(1)} km away</span>`
+            : "not reported this close to shore")
+        +row("Current", fcur
+            ? (fineOnly.spd>=0.1?`${fineOnly.spd.toFixed(1)} kt toward ${compass(fineOnly.dir)} (${Math.round(fineOnly.dir)}°)`:"slack (&lt;0.1 kt)")
+            : "not reported this close to shore")
+        /* ⚠ THE FOOTNOTE ADAPTS, and it has to. Measured over one hour of the live bake (2026-08-14,
+           35,234 answering fine cells, 73 reaching this branch = 0.207%), the fine CURRENT was
+           missing at 73 of 73 — the correlation is total, not incidental: the nearshore cells the
+           2.2 km wind tile does not reach are the same cells the SSCOFS current field does not
+           reach. So the common case here prints a roughness line plus a borrowed wind and nothing
+           else, and a fixed footnote claiming "the current above is read off the 560 m grid" would
+           be describing a row that says the opposite. ⚠ ONE hour, of a calm week — treat the rate as
+           indicative, not as the measured tap rate (see the shoreline-resampling note in the
+           digest). */
+        +`<div style="opacity:.55;font-size:11px;margin-top:3px">Close inshore. `
+        +(fcur
+          ? `The roughness and current above are read off the 560 m grid at this spot; the wind grid`
+            +` is 2.5 km and has no square here,`
+          : `The roughness above is read off the 560 m grid at this spot, but the wind and current`
+            +` grids are coarser and have no square here — the wind shown is the nearest one they do`
+            +` report,`)
+        +` so wind-sea and fetch are left out rather than taken from further away.</div>`;
     } else if(!inSteepZone(lon,lat) && overview && overview.ready && nearestCell(overview,lat,lon,SNAP_DEG)>=0){
       // Out-of-zone water: the steepness heuristic is a wind-vs-current estimate that does NOT model
       // ocean swell, so it's only computed inside the sheltered STEEP_ZONES. A tap on exposed water
@@ -2325,7 +2398,7 @@ function buildLegend(){
   $("legend").innerHTML=s;
 }
 const NOTES={
-  current:"Covers Puget Sound → Queen Charlotte Sound (south edge — <b>Haida Gwaii is outside SSCOFS</b>). Zoomed out: whole-coast ~2 km overview; zoom in (≥ z10): native FVCOM mesh tiles (~40–90 m in narrows) load automatically for the water in view. Arrows show <b>set</b> (where the water goes). SSCOFS is a model — official CHS/NOAA predictions remain authoritative at the tightest narrows.",
+  current:"Covers Puget Sound → Queen Charlotte Sound (south edge — <b>Haida Gwaii is outside SSCOFS</b>). Zoomed out: whole-coast ~2 km overview; zoom in (≥ z10): native FVCOM mesh tiles (triangles roughly 150–350 m across at the passes we have measured) load automatically for the water in view. Arrows show <b>set</b> (where the water goes). SSCOFS is a model — official CHS/NOAA predictions remain authoritative at the tightest narrows.",
   wind:"HRDPS 2.5 km whole-extent field, one resolution at every zoom (there is no finer wind tile). Arrows point <b>downwind</b> (the model stores the direction the wind blows <i>from</i>). Wind is drawn over land as well as water, so read the fill only where there is water — the base map shows through it rather than being overdrawn, and land reads lighter than water. Beaufort bins match the standalone wind map exactly.",
   /* 🔴 THE CURRENT-SOURCE SENTENCE BELOW DESCRIBES BEHAVIOUR THAT IS NOT BUILT YET.
      David approved this wording 2026-08-12c (draft B) and approved the plume box
