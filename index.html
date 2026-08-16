@@ -137,6 +137,20 @@
   .offbar{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-top:8px;font-size:12px}
   .offbar button{font-size:12px;padding:6px 10px}
   .offbar .savedlist{color:var(--muted)}
+  /* PDF capture mode */
+  #pdfBadge{display:none;position:fixed;top:10px;right:10px;z-index:9999;
+    background:#0a3d62;color:#fff;padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;
+    box-shadow:0 2px 8px rgba(0,0,0,.3);pointer-events:auto;cursor:default;
+    align-items:center;gap:8px}
+  #pdfBadge.on{display:inline-flex}
+  #pdfBadge .cnt{background:#e07040;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700}
+  #pdfSnap{background:#1a7f37;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;
+    font-weight:600;cursor:pointer;min-height:36px}
+  #pdfSnap:active{background:#15652d}
+  #pdfDone{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;
+    padding:4px 10px;font-size:12px;cursor:pointer;min-height:36px}
+  #pdfDone:hover{background:rgba(255,255,255,.1)}
+  #pdfCancel{min-height:36px;min-width:36px}
   #stale{display:none;gap:6px;flex-wrap:wrap;align-items:center}
   #stale .clk{display:inline-block;padding:2px 9px;border-radius:10px;font-weight:700;color:#fff}
   #stale .clk.ok{background:#1a7f37} #stale .clk.amber{background:#b45309} #stale .clk.red{background:#b42318}
@@ -205,6 +219,8 @@
     .offbar{flex:0 0 auto;margin-top:6px}
     .offbar button{min-height:44px;flex:1 1 40%}
     .note{display:none}                /* per-mode hint; hidden to give the map the room */
+    #pdfBadge{top:8px;right:8px;padding:6px 10px;gap:6px;font-size:13px}
+    #pdfSnap,#pdfDone,#pdfCancel{min-height:44px;min-width:44px;font-size:13px;padding:6px 12px}
     /* legend → collapsible overlay; mobileLayout() still moves the node inside #map, but both the
        panel and its button are position:FIXED so the key opens at the bottom of the PAGE (over the
        status + offline rows) rather than the bottom of the map — full width, and it clears the
@@ -309,10 +325,12 @@
   <p class="status" id="status">Loading…</p>
   <div class="offbar" id="offbar">
     <span id="stale"></span>
+    <button id="pdfBtn">📄 Capture PDF</button>
     <button id="saveBtn">⬇ Save offline</button>
     <button id="refreshBtn">↻ Refresh</button>
     <span class="savedlist" id="savedList"></span>
   </div>
+  <div id="pdfBadge"><span id="pdfCount" class="cnt">0</span> snapshots <button id="pdfSnap">+ Add</button> <button id="pdfDone">Save PDF</button> <button id="pdfCancel" style="background:transparent;color:rgba(255,255,255,.6);border:none;font-size:14px;cursor:pointer;padding:2px 6px">✕</button></div>
   <p class="note" id="note"></p>
 </main>
 <div id="tip"></div>
@@ -322,6 +340,7 @@
      land in this page's global scope, so the inline script below uses them directly. The deploy
      recipe ships it alongside index.html (it is already on the repo branch). -->
 <script src="physics.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
 <script>
 const R2="https://pub-cb8eb71f75d64a57a0d021318ccd0ae7.r2.dev";
 const SSCOFS_URL="https://nvs.nanoos.org/WaysWaterMoves";
@@ -443,7 +462,7 @@ const WH_COL=["#edf5f3","#daf0eb","#c0e8e2","#a4dfdb","#83d4d4","#55c9d2","#01b9
 /* Ramp source for glMode(), shaped like a MODES entry but deliberately NOT IN `MODES`: MODES keys are
    the ?mode= vocabulary (the URL reader tests `MODES[m]`), and Wave Height is a DISPLAY of the steep
    layer, not a layer. minDraw 0 discards only the DRY sentinel (−1000); heights are ≥ 0. */
-const WAVEH={ edges:WH_EDGES, cols:WH_COL, minDraw:0, smooth:true, unit:"m" };
+const WAVEH={ edges:WH_EDGES, cols:WH_COL, minDraw:0, smooth:false, unit:"m" };
 // "Wave Steepness" display: a hazard RING (colour+weight by band) with a cyan current dot+arrow, drawn
 // over the full wind fill — the original wind-map station format. Indexed by band 0..4.
 /* TWO CHANGES, David 2026-08-07:
@@ -652,11 +671,11 @@ function setBase(key){
   // labels sit in the "labels" pane and the field/arrow canvases in "fields", so neither is touched.
   // maxNativeZoom is undefined for both remaining bases (neither caps below z16); kept so a
   // shallow-cached base can be re-added without re-deriving why blank tiles appear past its top level.
-  const b=BASES[key]; baseLayer=L.tileLayer(b.url,{maxZoom:16,maxNativeZoom:b.maxNativeZoom,attribution:b.attr,className:"baseTiles"}).addTo(map);
+  const b=BASES[key]; baseLayer=L.tileLayer(b.url,{maxZoom:16,maxNativeZoom:b.maxNativeZoom,attribution:b.attr,className:"baseTiles",crossOrigin:true}).addTo(map);
   // add the reference-labels overlay only when the mode wants labels AND the base has none of its own,
   // otherwise topo/USGS bases (which bake in their own labels) would show a doubled set of city names.
   const want=MODES[mode].labels && !b.ownLabels;
-  if(want && !labelLayer) labelLayer=L.tileLayer(LABELS_URL,{maxZoom:16,pane:"labels"}).addTo(map);
+  if(want && !labelLayer) labelLayer=L.tileLayer(LABELS_URL,{maxZoom:16,pane:"labels",crossOrigin:true}).addTo(map);
   if(!want && labelLayer){ map.removeLayer(labelLayer); labelLayer=null; }
 }
 /* A vector coastline overlay was tried here on 2026-08-06 and REJECTED by David: Natural Earth 10m
@@ -827,9 +846,10 @@ function activeTiles(){
   }
   return overview&&overview.ready?[overview]:[];
 }
+const FILL_DPR=matchMedia("(max-width:640px)").matches?1:Math.min(window.devicePixelRatio||1,2);
 function drawGL(){
-  const size=map.getSize(), dpr=window.devicePixelRatio||1;
-  glc.width=size.x*dpr; glc.height=size.y*dpr; glc.style.width=size.x+"px"; glc.style.height=size.y+"px";
+  const size=map.getSize();
+  glc.width=size.x*FILL_DPR; glc.height=size.y*FILL_DPR; glc.style.width=size.x+"px"; glc.style.height=size.y+"px";
   if(!gl) return; gl.viewport(0,0,glc.width,glc.height); gl.clear(gl.COLOR_BUFFER_BIT);
   const acts=activeTiles(); if(!acts.length) return;
   const z=map.getZoom(), scale=Math.pow(2,z-Z0);
@@ -860,7 +880,7 @@ function gridStride(t,tp){
   return {sc,sr,eff:Math.min(sc*pxx,sr*pxy)};
 }
 function drawArrows(){
-  const size=map.getSize(), dpr=window.devicePixelRatio||1;
+  const size=map.getSize(), dpr=FILL_DPR;
   arc.width=size.x*dpr; arc.height=size.y*dpr; arc.style.width=size.x+"px"; arc.style.height=size.y+"px";
   const ctx=arc.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
   let tp=+$("arrows").value; if(!tp) return;
@@ -960,7 +980,7 @@ function render(){ syncOverlayPos(); drawGL();
    bucket the WORST band wins, so decimation never hides the more dangerous cell. The Arrows control
    sets ring spacing; "Off" hides the current arrows but keeps the rings + dots. */
 function drawSteepRings(){
-  const size=map.getSize(), dpr=window.devicePixelRatio||1;
+  const size=map.getSize(), dpr=FILL_DPR;
   arc.width=size.x*dpr; arc.height=size.y*dpr; arc.style.width=size.x+"px"; arc.style.height=size.y+"px";
   const ctx=arc.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
   if(!steepTile||!steepTile.ready) return;
@@ -2480,10 +2500,16 @@ function setSteepStyle(v){
   if(v==="fill") v="rings";                 // "Shaded cells" removed 2026-08-07 — legacy ?st=fill links
   if(v===steepStyle || (v!=="rings"&&v!=="course"&&v!=="height")) return;
   steepStyle=v;
-  if(steepTile) steepTile.decodedHour=-1;   // spd3 holds different bands per display → force a re-decode
+  if(steepTile && steepTile.ready && steepTile.decodedHour>=0){
+    // Re-shade spd3 for the new display — the physics (band/Hs/Hamp) are already decoded
+    if(v==="course"){ steepTile.buildQuarter(); steepTile.shadeCourse(); steepTile.arrowGate=null; }
+    else if(v==="height"){ steepTile.shadeHeight(); steepTile.arrowGate=null; }
+    else { for(let m=0;m<steepTile.ne;m++) setQuad(steepTile.spd3,m,steepTile.band[m]<1.5?DRY:steepTile.band[m]); steepTile.arrowGate=steepTile.band; }
+    if(gl){ gl.bindBuffer(gl.ARRAY_BUFFER,steepTile.spdBuf); gl.bufferData(gl.ARRAY_BUFFER,steepTile.spd3,gl.DYNAMIC_DRAW); }
+  } else if(steepTile) steepTile.decodedHour=-1;
   updateSteepControls();
   applyModeGL(); syncOpacityUI(); buildLegend(); render(); updateURL();
-  refreshTip();                             // rings/shaded/course readouts differ — refresh in place
+  refreshTip();
 }
 // Course change: under option 3 NOTHING the map paints depends on the steered course — the fill is
 // wind and the ticks are the worst heading, both course-independent. So there is no re-shade and no GL
@@ -2652,6 +2678,10 @@ mobileLayout();
 // just makes the switch immediate when the browser delivers the media-query change event
 mobileMQ.addEventListener("change",mobileLayout);
 
+glc.addEventListener("webglcontextlost", e => {
+  e.preventDefault(); gl = null;
+  setStatus("Map display lost ("+mode+"/"+steepStyle+", pdf="+(pdfState.active?"on":"off")+") — close other tabs, wait a moment, then reload.", true);
+});
 if(initGL()) boot();
 
 async function boot(){
@@ -2705,7 +2735,351 @@ async function boot(){
    this — the scope is the directory, not the filename). Deployed the two apps sit on separate
    paths, so their scopes never meet and this guard is a no-op there.
    `?sw=1` opts back in when the offline path itself is what's being tested locally. */
-const DEV_ORIGIN=/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+/* ---------- PDF capture ---------- */
+const pdfState = { active: false, snaps: [], dayCount: {}, pdf: null, pageAdded: false };
+
+function pdfLayerName() {
+  const parts = [];
+  if (mode === "wind") parts.push("wind");
+  else if (mode === "current") parts.push("currents");
+  else if (mode === "steep") {
+    if (steepStyle === "rings") parts.push("wind", "steepness");
+    else if (steepStyle === "course") parts.push("wind", "quartering");
+    else if (steepStyle === "height") parts.push("wind", "waveht");
+    const arrowsOn = +$("arrows").value > 0;
+    if (arrowsOn) parts.push("currents");
+  }
+  return parts;
+}
+
+function pdfLayerLabel() {
+  if (mode === "wind") return "Wind";
+  if (mode === "current") return "Currents";
+  if (steepStyle === "rings") return "Wind + Sea State";
+  if (steepStyle === "course") return "Wind + Quartering";
+  if (steepStyle === "height") return "Wind + Wave Height";
+  return "Unknown";
+}
+
+function pdfTimestamp() {
+  if (!TIMES || !TIMES.length) return "Unknown time";
+  const d = new Date(TIMES[hour]);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Vancouver", weekday: "short", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "short"
+  }).formatToParts(d);
+  const g = (t) => (parts.find(p => p.type === t) || {}).value || "";
+  return g("weekday") + " " + g("month") + " " + g("day") + ", " + g("hour") + ":" + g("minute") + " " + g("timeZoneName");
+}
+
+async function pdfCaptureMap() {
+  const mapEl = $("map");
+  const rect = mapEl.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cw = Math.round(rect.width * dpr), ch = Math.round(rect.height * dpr);
+  const out = document.createElement("canvas");
+  out.width = cw; out.height = ch;
+  const ctx = out.getContext("2d");
+  ctx.scale(dpr, dpr);
+
+  // Snapshot GL + 2D canvases synchronously BEFORE any await — without
+  // preserveDrawingBuffer the back buffer is discarded after compositing,
+  // so it must be read in the same frame as the last render.
+  render();
+  let glSnap = null, arcSnap = null;
+  if (gl && glc.width > 0 && glc.height > 0) {
+    glSnap = document.createElement("canvas");
+    glSnap.width = glc.width; glSnap.height = glc.height;
+    glSnap.getContext("2d").drawImage(glc, 0, 0);
+  }
+  if (arc.width > 0 && arc.height > 0) {
+    arcSnap = document.createElement("canvas");
+    arcSnap.width = arc.width; arcSnap.height = arc.height;
+    arcSnap.getContext("2d").drawImage(arc, 0, 0);
+  }
+
+  async function fetchTileImg(src) {
+    const res = await fetch(src, { mode: "cors" });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(); };
+      img.src = url;
+    });
+  }
+
+  // 1. Draw base tiles
+  const tiles = mapEl.querySelectorAll(".baseTiles img");
+  await Promise.all([...tiles].map(async tile => {
+    if (!tile.complete || !tile.naturalWidth) return;
+    const tr = tile.getBoundingClientRect();
+    try {
+      const img = await fetchTileImg(tile.src);
+      ctx.drawImage(img, tr.left - rect.left, tr.top - rect.top, tr.width, tr.height);
+    } catch(e) { /* skip failed tiles */ }
+  }));
+
+  // 2. Draw label tiles (if any)
+  const labelPane = mapEl.querySelector(".leaflet-pane[style*='460']");
+  if (labelPane) {
+    const labelTiles = labelPane.querySelectorAll("img");
+    await Promise.all([...labelTiles].map(async tile => {
+      if (!tile.complete || !tile.naturalWidth) return;
+      const tr = tile.getBoundingClientRect();
+      try {
+        const img = await fetchTileImg(tile.src);
+        ctx.drawImage(img, tr.left - rect.left, tr.top - rect.top, tr.width, tr.height);
+      } catch(e) {}
+    }));
+  }
+
+  // 3. Draw GL from snapshot
+  if (glSnap) { ctx.drawImage(glSnap, 0, 0, rect.width, rect.height); glSnap = null; }
+
+  // 4. Draw 2D overlay from snapshot
+  if (arcSnap) { ctx.drawImage(arcSnap, 0, 0, rect.width, rect.height); arcSnap = null; }
+
+  return out.toDataURL("image/jpeg", 0.92);
+}
+
+async function pdfAddSnap() {
+  if (pdfState.snaps.length >= 20 || !pdfState.pdf) return;
+  $("pdfSnap").textContent = "Capturing…";
+  $("pdfSnap").disabled = true;
+  try {
+    const img = await pdfCaptureMap();
+    const snap = {
+      ts: pdfTimestamp(), layers: pdfLayerLabel(), layerParts: pdfLayerName(),
+      legendMode: mode, legendSteep: steepStyle, legendAlpha: getAlpha(),
+      legendWindArrows: $("windArrows").checked
+    };
+    pdfState.snaps.push(snap);
+
+    const pdf = pdfState.pdf;
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    const margin = 6, headerH = 10, legendH = 14, footerH = 6;
+
+    if (pdfState.pageAdded) pdf.addPage("letter", "landscape");
+    pdfState.pageAdded = true;
+
+    pdf.setFontSize(8); pdf.setFont(undefined, "bold");
+    pdf.text(snap.ts, margin, margin + 4);
+    pdf.setFont(undefined, "normal"); pdf.setFontSize(7);
+    pdf.text(snap.layers, pw - margin, margin + 4, { align: "right" });
+    pdf.setDrawColor(200); pdf.line(margin, margin + headerH - 2, pw - margin, margin + headerH - 2);
+
+    const imgY = margin + headerH;
+    const imgH = ph - margin - headerH - legendH - footerH;
+    pdf.addImage(img, "JPEG", margin, imgY, pw - margin * 2, imgH);
+
+    const legendY = imgY + imgH + 1;
+    pdf.setDrawColor(200); pdf.line(margin, legendY - 0.5, pw - margin, legendY - 0.5);
+    pdfDrawLegend(pdf, snap, margin, legendY, pw - margin * 2);
+
+    $("pdfCount").textContent = pdfState.snaps.length;
+  } finally {
+    $("pdfSnap").textContent = "+ Add";
+    $("pdfSnap").disabled = false;
+  }
+}
+
+function pdfFileName() {
+  const allParts = new Set();
+  pdfState.snaps.forEach(s => s.layerParts.forEach(p => allParts.add(p)));
+  const order = ["wind", "steepness", "quartering", "waveht", "currents"];
+  const sorted = order.filter(p => allParts.has(p));
+  const today = new Date().toISOString().slice(0, 10);
+  const key = sorted.join("-") + "-" + today;
+  pdfState.dayCount[key] = (pdfState.dayCount[key] || 0) + 1;
+  return sorted.join("-") + "-" + today + "-" + pdfState.dayCount[key] + ".pdf";
+}
+
+function pdfHex2RGB(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+function pdfBlend(hex, overHex, a) {
+  const c = pdfHex2RGB(hex), w = pdfHex2RGB(overHex);
+  return [Math.round(c[0]*a + w[0]*(1-a)), Math.round(c[1]*a + w[1]*(1-a)), Math.round(c[2]*a + w[2]*(1-a))];
+}
+
+function pdfDrawLegend(pdf, snap, x, y, maxW) {
+  const sw = 3.5, gap = 1.2, textGap = 0.8;
+  let cx = x, cy = y;
+  const rowH = 5;
+
+  pdf.setFontSize(6); pdf.setTextColor(60);
+
+  function nextRow() { cx = x; cy += rowH; }
+  function fits(w) { return cx + w <= x + maxW; }
+
+  function swatch(rgb, label, opts) {
+    const chipW = sw + textGap + pdf.getTextWidth(label) + gap;
+    if (!fits(chipW)) nextRow();
+    if (opts && opts.ring) {
+      pdf.setDrawColor(rgb[0], rgb[1], rgb[2]);
+      pdf.setLineWidth(0.5);
+      pdf.circle(cx + sw/2, cy + sw/2, sw/2 - 0.3, "S");
+    } else {
+      pdf.setFillColor(rgb[0], rgb[1], rgb[2]);
+      pdf.rect(cx, cy, sw, sw, "F");
+      pdf.setDrawColor(180); pdf.setLineWidth(0.1);
+      pdf.rect(cx, cy, sw, sw, "S");
+    }
+    pdf.setTextColor(60);
+    pdf.text(label, cx + sw + textGap, cy + sw - 0.6);
+    cx += chipW;
+  }
+
+  function title(t) {
+    const tw = pdf.getTextWidth(t) + gap;
+    if (!fits(tw)) nextRow();
+    pdf.setFont(undefined, "bold");
+    pdf.text(t, cx, cy + sw - 0.6);
+    cx += tw;
+    pdf.setFont(undefined, "normal");
+  }
+
+  function beaufortRow(alpha) {
+    title("Wind (Beaufort):");
+    for (let f = 0; f <= 9; f++) {
+      const rgb = pdfBlend(W_COL[f], GRAY_LAND, alpha);
+      const lbl = f === 0 ? "F0 calm" : "F" + f + " " + kt(W_EDGES[f-1]) + (f < W_EDGES.length ? "–" + kt(W_EDGES[f]-1) : "+") + " kt";
+      swatch(rgb, lbl);
+    }
+    swatch(pdfBlend(W_COL[10], GRAY_LAND, alpha), "F10+");
+  }
+
+  const m = snap.legendMode, st = snap.legendSteep, a = snap.legendAlpha;
+
+  if (m === "current") {
+    title("Current speed (kt):");
+    const md = MODES.current;
+    for (let f = 0; f < CUR_COL.length; f++) {
+      const rgb = f === 0 ? pdfHex2RGB(BASE_WATER) : pdfBlend(CUR_COL[f], BASE_WATER, md.alpha);
+      swatch(rgb, CUR_LBL[f] + (f === 0 ? " (unshaded)" : ""));
+    }
+  } else if (m === "wind") {
+    beaufortRow(MODES.wind.alpha);
+  } else if (st === "rings") {
+    title("Wave steepness:");
+    for (let bnd = 2; bnd <= 4; bnd++)
+      swatch(pdfHex2RGB(RING[bnd].col), RING_LBL[bnd], { ring: true });
+    swatch([0, 180, 216], "current set (arrow)");
+    nextRow();
+    if (snap.legendWindArrows) beaufortRow(a);
+    else {
+      pdf.setTextColor(120);
+      pdf.text("Coloured fill = wind (Beaufort)", cx, cy + sw - 0.6);
+      pdf.setTextColor(60);
+    }
+  } else if (st === "height") {
+    title("Wave height:");
+    const WH_TOP = WH_EDGES[WH_EDGES.length - 1];
+    const barW = 60, barH = 3.5;
+    if (!fits(barW + gap)) nextRow();
+    const barX = cx;
+    const nSteps = 80;
+    const stepW = barW / nSteps;
+    for (let s = 0; s < nSteps; s++) {
+      const v = (s / nSteps) * WH_TOP;
+      const WH_VALS = [0, ...WH_EDGES];
+      let bin = 0;
+      for (let e = 0; e < WH_EDGES.length; e++) { if (v >= WH_EDGES[e]) bin = e + 1; }
+      let rgb;
+      if (bin >= WH_COL.length - 1) {
+        rgb = pdfHex2RGB(WH_COL[WH_COL.length - 1]);
+      } else {
+        const lo = bin === 0 ? 0 : WH_VALS[bin], hi = WH_VALS[bin + 1];
+        const t = hi > lo ? (v - lo) / (hi - lo) : 0;
+        const c1 = pdfHex2RGB(WH_COL[bin]), c2 = pdfHex2RGB(WH_COL[bin + 1]);
+        rgb = [Math.round(c1[0] + (c2[0] - c1[0]) * t), Math.round(c1[1] + (c2[1] - c1[1]) * t), Math.round(c1[2] + (c2[2] - c1[2]) * t)];
+      }
+      const blended = [Math.round(rgb[0]*a + pdfHex2RGB(BASE_WATER)[0]*(1-a)),
+                        Math.round(rgb[1]*a + pdfHex2RGB(BASE_WATER)[1]*(1-a)),
+                        Math.round(rgb[2]*a + pdfHex2RGB(BASE_WATER)[2]*(1-a))];
+      pdf.setFillColor(blended[0], blended[1], blended[2]);
+      pdf.rect(barX + s * stepW, cy, stepW + 0.1, barH, "F");
+    }
+    pdf.setDrawColor(160); pdf.setLineWidth(0.15);
+    pdf.rect(barX, cy, barW, barH, "S");
+    const ticks = [[0,"0"],[0.5,"0.5"],[1.0,"1.0"],[1.5,"1.5"],[2.0,"2.0"],[2.5,"2.5"],[WH_TOP,"3 m+"]];
+    pdf.setFontSize(5);
+    ticks.forEach(([v, lbl]) => {
+      const tx = barX + (v / WH_TOP) * barW;
+      if (v === 0) pdf.text(lbl, tx, cy + barH + 2.8);
+      else if (v >= WH_TOP) pdf.text(lbl, tx, cy + barH + 2.8, { align: "right" });
+      else pdf.text(lbl, tx, cy + barH + 2.8, { align: "center" });
+    });
+    pdf.setFontSize(6);
+    cx = barX + barW + gap * 2;
+    swatch([20, 20, 30], "current set (arrow)");
+  } else if (st === "course") {
+    title("Quartering seas:");
+    swatch(pdfHex2RGB(Q_TICK), "worst heading to steer");
+    nextRow();
+    beaufortRow(a);
+  }
+
+  return cy + rowH + 1;
+}
+
+async function pdfExport() {
+  if (!pdfState.snaps.length || !pdfState.pdf) return;
+  const pdf = pdfState.pdf;
+  const pw = pdf.internal.pageSize.getWidth();
+  const ph = pdf.internal.pageSize.getHeight();
+  const margin = 6;
+  const fileName = pdfFileName();
+  const total = pdfState.snaps.length;
+
+  for (let i = 0; i < total; i++) {
+    pdf.setPage(i + 1);
+    const footY = ph - margin;
+    pdf.setFontSize(6); pdf.setTextColor(120);
+    pdf.text(fileName, margin, footY);
+    pdf.text((i + 1) + " / " + total, pw - margin, footY, { align: "right" });
+    pdf.setTextColor(0);
+  }
+
+  const blob = pdf.output("blob");
+  const file = new File([blob], fileName, { type: "application/pdf" });
+  const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+  if (isMobile && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); }
+    catch(err) { if (err.name !== "AbortError") pdf.save(fileName); }
+  } else {
+    pdf.save(fileName);
+  }
+}
+
+function pdfStart() {
+  const { jsPDF } = window.jspdf;
+  pdfState.active = true;
+  pdfState.snaps = [];
+  pdfState.pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "letter" });
+  pdfState.pageAdded = false;
+  $("pdfBadge").classList.add("on");
+  $("pdfCount").textContent = "0";
+  $("pdfBtn").style.display = "none";
+}
+
+function pdfStop() {
+  pdfState.active = false;
+  pdfState.snaps = [];
+  pdfState.pdf = null;
+  $("pdfBadge").classList.remove("on");
+  $("pdfBtn").style.display = "";
+}
+
+$("pdfBtn").onclick = pdfStart;
+$("pdfSnap").onclick = pdfAddSnap;
+$("pdfDone").onclick = async () => { await pdfExport(); pdfStop(); };
+$("pdfCancel").onclick = pdfStop;
+
+const DEV_ORIGIN=/^(localhost|127\.0\.0\.1|\[::1\]|192\.168\.)/.test(location.hostname);
 if("serviceWorker" in navigator && location.protocol.startsWith("http")){
   if(DEV_ORIGIN && !new URLSearchParams(location.search).has("sw"))
     // also tear down anything a previous local visit left controlling this origin, so a machine
