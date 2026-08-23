@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Justification Doc — Geographic Reference Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif}
+#map{position:absolute;inset:0}
+
+.legend{background:#fff;padding:12px 16px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.25);
+  font-size:13px;line-height:1.7;max-width:220px}
+.legend h4{margin:0 0 6px;font-size:14px;color:#333}
+.legend-item{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.legend-item:hover{opacity:.8}
+.legend-item.off{opacity:.35;text-decoration:line-through}
+.legend-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;border:2px solid #fff;
+  box-shadow:0 0 0 1px rgba(0,0,0,.2)}
+
+.marker-icon{width:26px;height:26px;border-radius:50%;border:2.5px solid #fff;
+  box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:#fff;font-weight:700;line-height:1}
+
+.leaflet-popup-content{font-family:system-ui,sans-serif;font-size:13px;line-height:1.55;max-width:320px}
+.leaflet-popup-content h3{font-size:15px;margin:0 0 4px;color:#1a1a1a}
+.leaflet-popup-content .cat{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.03em;
+  padding:1px 8px;border-radius:20px;color:#fff;margin-bottom:6px}
+.leaflet-popup-content .ctx{color:#555;margin:4px 0 0;font-size:12.5px;border-left:2px solid #ddd;padding-left:8px}
+.leaflet-popup-content .sec{color:#888;font-size:11.5px;margin-top:4px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+const CATS = {
+  rip:     {label:'Tidal rips & narrows',  color:'#d03b3b', icon:'≋', z:900},
+  buoy:    {label:'Buoys & stations',      color:'#2a78d6', icon:'◉', z:800},
+  channel: {label:'Straits & channels',    color:'#1baf7a', icon:'~', z:700},
+  place:   {label:'Places & landmarks',    color:'#eda100', icon:'◆', z:600}
+};
+
+const PLACES = [
+  // ── Tidal rips & narrows ──
+  {n:'Nakwakto Rapids',        lat:51.095, lon:-127.508, cat:'rip',
+   ctx:'Signature tidal rip. Named as archetype of the coast\'s most dangerous water — "the standing breaking sea you paddle into at Nakwakto, Seymour, or Deception Pass."',
+   sec:'§2 (blocking model), §7 (tidal narrows regime)'},
+
+  {n:'Seymour Narrows',        lat:50.144, lon:-125.357, cat:'rip',
+   ctx:'Named alongside Nakwakto and Deception Pass as the defining rip sites this model must get right. Strong opposing tidal streams meet locally generated seas.',
+   sec:'§2, §7'},
+
+  {n:'Deception Pass',         lat:48.410, lon:-122.624, cat:'rip',
+   ctx:'The US counterpart to the Canadian tidal narrows. Spectral saturation draws the standing breaking rip; monochromatic model is singular here.',
+   sec:'§2, §7 (tidal narrows regime)'},
+
+  {n:'Discovery Passage',      lat:50.067, lon:-125.251, cat:'rip',
+   ctx:'Gemmrich & Pawlowicz\'s WW3 model shows 99th-percentile wave heights standing up here under westerly and southerly winds — independent confirmation of the blocking physics.',
+   sec:'§2 (WW3 regional blocking sites)'},
+
+  {n:'Boundary Pass',          lat:48.738, lon:-123.092, cat:'rip',
+   ctx:'Second site where Gemmrich & Pawlowicz\'s WW3 finds 99th-percentile wave heights under northwesterlies — narrows where strong opposing tidal streams meet a locally generated sea.',
+   sec:'§2 (WW3 regional blocking sites), §8'},
+
+  {n:'Okisollo Channel',       lat:50.276, lon:-125.205, cat:'rip',
+   ctx:'Listed as one of the tidal narrows where spectral saturation is the reliable choice over the monochromatic model.',
+   sec:'§7 (tidal narrows regime)'},
+
+  {n:'Dent Rapids',            lat:50.407, lon:-125.212, cat:'rip',
+   ctx:'Listed alongside Nakwakto and Seymour as a tidal narrows site. Light–moderate wind with very strong opposing current.',
+   sec:'§7 (tidal narrows regime)'},
+
+  {n:'Cattle Pass',            lat:48.450, lon:-122.962, cat:'rip',
+   ctx:'Could not be validated against SalishSeaCast because it falls inside that model\'s land mask — the nearest reported water is 560 m away. The narrowest part was untestable.',
+   sec:'§8 (spatial validation limits)'},
+
+  {n:'Nahwitti Bar',           lat:50.893, lon:-127.870, cat:'rip',
+   ctx:'Named as a swell-exposed boundary where no pair of these models is reliable because there is no swell input. Excluded from the steepness layer.',
+   sec:'§7 (acknowledged boundary)'},
+
+  {n:'Weynton Passage',        lat:50.581, lon:-126.806, cat:'rip',
+   ctx:'Lies west of SalishSeaCast\'s 126°W domain edge. Not validated by the §8 spatial comparison. Real triangles are 176 m at Weynton — 3× finer than the 560 m display grid.',
+   sec:'§8 (limits — northern passes not validated)'},
+
+  {n:'Blackney Passage',       lat:50.564, lon:-126.685, cat:'rip',
+   ctx:'West of SalishSeaCast\'s domain. The Blackney point on file was found to be off-channel — the actual stream is 700 m east at 50.601, −126.6902.',
+   sec:'§8 (limits)'},
+
+  {n:'Surge Narrows',          lat:50.228, lon:-125.154, cat:'rip',
+   ctx:'Part of the Cordero–Yuculta rapids chain. Tidal narrows regime — light–moderate wind, very strong opposing current.',
+   sec:'§7 (tidal narrows regime, implied)'},
+
+  {n:'Yuculta Rapids',         lat:50.375, lon:-125.151, cat:'rip',
+   ctx:'Part of the rapids chain between Bute Inlet and Discovery Passage. Tidal narrows regime.',
+   sec:'§7 (tidal narrows regime, implied)'},
+
+  {n:'Tacoma Narrows',         lat:47.281, lon:-122.540, cat:'rip',
+   ctx:'Key Puget Sound rip. The massive inland sound forces its tidal volume through this tight exit, creating heavy turbulence and standing waves.',
+   sec:'Source: Tidal Rips (epub) — Puget Sound & Broughtons'},
+
+  {n:'Admiralty Inlet',        lat:48.078, lon:-122.651, cat:'rip',
+   ctx:'Where Puget Sound\'s full tidal prism is forced over shallow sills. "Peaking heavily over the shallow sills" — the primary choking point for the Sound\'s tidal exchange.',
+   sec:'Source: Tidal Rips (epub) — Puget Sound key location'},
+
+  {n:'Active Pass',            lat:48.866, lon:-123.309, cat:'rip',
+   ctx:'Gulf Islands pass between Galiano and Mayne Islands. Tidal rips form where deep water is forced over shallow sills — "washing machine" water over a quarter to half-mile span.',
+   sec:'Source: Tidal Rips (epub) — San Juan & Gulf Islands'},
+
+  {n:'Spieden Island',         lat:48.641, lon:-123.133, cat:'rip',
+   ctx:'Tidal rips form around sharp rocky projections on this island north of San Juan Island. Chaotic water where current shears around headlands.',
+   sec:'Source: Tidal Rips (epub) — San Juan & Gulf Islands'},
+
+  // ── Buoys & stations ──
+  {n:'Halibut Bank',           lat:49.340, lon:-123.725, cat:'buoy',
+   ctx:'Validation buoy. Wave spectra measured here peak between 0.16–0.4 Hz (2.5–6.5 s). Gemmrich & Pawlowicz measured saturation coefficient A = 0.07 here. WW3 validation station.',
+   sec:'§1 (refit), §2 (observed spectra), App. A'},
+
+  {n:'Sentry Shoal',           lat:49.914, lon:-124.991, cat:'buoy',
+   ctx:'Validation buoy. Gemmrich & Pawlowicz measured saturation coefficient A = 0.09 here — the value adopted for the model. WW3 validation station.',
+   sec:'§1 (refit), App. A'},
+
+  {n:'Sand Heads',             lat:49.106, lon:-123.303, cat:'buoy',
+   ctx:'Critical failure case: the WW3 model shows NO wave increase here despite the Fraser ebb jet, because the ocean model doesn\'t reproduce the jet\'s strength. "A blocking model is only ever as good as the current field handed to it." Site of Cap Rouge II capsize (5 lives, 2002).',
+   sec:'§2 (conspicuous failure), references'},
+
+  // ── Straits & channels ──
+  {n:'Strait of Georgia',      lat:49.389, lon:-124.071, cat:'channel',
+   ctx:'Primary validation domain. Saturation coefficient A ≈ 0.07–0.09 here vs 0.24 open ocean. 604 winter days / 260,928 samples at three stations. Fetch-limited basin that saturates at roughly a third of open-ocean height.',
+   sec:'§1 (refit, validation), §6 (L9, L11), App. A'},
+
+  {n:'Queen Charlotte Sound',  lat:51.523, lon:-129.192, cat:'channel',
+   ctx:'Northern boundary of the model domain (QCS → Puget Sound). Open edges exposed to ocean swell — layer excluded here. Part of the acknowledged swell boundary.',
+   sec:'Title, §7 (boundary)'},
+
+  {n:'Queen Charlotte Strait', lat:50.770, lon:-127.303, cat:'channel',
+   ctx:'Channelled gap winds regime — 10–25 kt terrain-funnelled oblique winds, fetch-restricted. Slanting-fetch generation is the field-validated physics here.',
+   sec:'§7 (channelled gap winds regime)'},
+
+  {n:'Hecate Strait',          lat:53.072, lon:-130.686, cat:'channel',
+   ctx:'Open edge exposed to ocean swell. No steepness layer drawn here because no swell input in the physics.',
+   sec:'§6 (L1), §7 (swell boundary)'},
+
+  {n:'Strait of Juan de Fuca', lat:48.250, lon:-123.500, cat:'channel',
+   ctx:'Western entrance is the swell boundary — no pair of models is reliable there. East of the swell: broad-strait gales regime (30–45 kt, long fetch). §8 spatial validation captured 46 hours here.',
+   sec:'§6 (L1), §7 (broad-strait gales, swell boundary), §8'},
+
+  {n:'Haro Strait',            lat:48.555, lon:-123.268, cat:'channel',
+   ctx:'Part of the §8 spatial validation domain. SalishSeaCast comparison confirmed 71.6% agreement on mark placement.',
+   sec:'§8 (spatial validation domain)'},
+
+  {n:'Johnstone Strait',       lat:50.476, lon:-126.177, cat:'channel',
+   ctx:'Channelled gap winds regime — oblique winds, fetch-restricted. Lies west of SalishSeaCast\'s 126°W edge, so the northern passes here are not validated by §8.',
+   sec:'§7 (channelled gap winds), §8 (limits)'},
+
+  {n:'Puget Sound',            lat:47.739, lon:-122.430, cat:'channel',
+   ctx:'Southern extent of the model domain (QCS → Puget Sound). Part of the "Broughton Islands to Puget Sound" coverage.',
+   sec:'Title, subtitle'},
+
+  {n:'San Juan Channel',       lat:48.575, lon:-123.021, cat:'channel',
+   ctx:'SalishSeaCast declines to carry any wave energy into San Juan Channel — may be correct (genuinely sheltered) or a limit of its grid. Could not be tested in §8.',
+   sec:'§8 (limits)'},
+
+  {n:'Dixon Entrance',         lat:54.500, lon:-132.000, cat:'channel',
+   ctx:'Outside the WW3 validation domain. "Nothing here constrains the west coast of Vancouver Island, Haida Gwaii, or Dixon Entrance."',
+   sec:'App. A (caveats)'},
+
+  // ── Places & landmarks ──
+  {n:'Broughton Islands',      lat:50.650, lon:-126.800, cat:'place',
+   ctx:'Archipelago chop regime — multi-fetch, short-crested, confused seas. Only a component fan can represent directional spread and the quartering rose.',
+   sec:'Subtitle, §7 (archipelago chop regime)'},
+
+  {n:'Gulf Islands',           lat:48.860, lon:-123.450, cat:'place',
+   ctx:'Part of the archipelago chop regime alongside the San Juan Islands. Multi-fetch, confused seas requiring directional components.',
+   sec:'§7 (archipelago chop regime)'},
+
+  {n:'San Juan Islands',       lat:48.530, lon:-123.050, cat:'place',
+   ctx:'Part of the §8 spatial validation domain and the archipelago chop regime. 71.6% agreement on mark placement vs SalishSeaCast.',
+   sec:'§7 (archipelago chop), §8'},
+
+  {n:'Vancouver Island',       lat:49.700, lon:-125.500, cat:'place',
+   ctx:'West coast explicitly excluded from validation. "Nothing here constrains the west coast of Vancouver Island." The WW3 configuration carries no swell.',
+   sec:'§6 (L1), App. A (caveats)'},
+
+  {n:'Haida Gwaii',            lat:53.000, lon:-131.800, cat:'place',
+   ctx:'SSCOFS current field does not cover Haida Gwaii — no wave layer drawn here. Outside the validation domain.',
+   sec:'§6 (L1, L10)'},
+
+  {n:'Fraser River (mouth)',   lat:49.120, lon:-123.190, cat:'place',
+   ctx:'The Fraser jets into the Strait on the ebb. Site of Sand Heads failure case and Cap Rouge II capsize (2002, 5 lives lost). The ocean model doesn\'t reproduce the ebb jet strength.',
+   sec:'§2'},
+
+  {n:'Cape St. James',         lat:51.930, lon:-131.010, cat:'place',
+   ctx:'Climatology found ERA5 unable to resolve this headland — "the same failure one grid coarser." Illustrates the 2.5 km wind resolution limit.',
+   sec:'§6 (L9)'},
+
+  {n:'Cape Mudge',             lat:50.002, lon:-125.197, cat:'rip',
+   ctx:'Tidal streams 7–9 kn. Heavy race between Cape Mudge and Willow Point on south-going streams; "extremely steep and hazardous waves" when opposed by strong SE winds. Pass at or after HW slack.',
+   sec:'Source: CHS PAC 202 Ch.1 §37–38; also §7 (Discovery Passage entrance)'},
+
+  // ── Coast Pilot 10 tidal rips ──
+  {n:'Cape Flattery',              lat:48.390, lon:-124.740, cat:'rip',
+   ctx:'Tide rips "particularly heavy off Cape Flattery, at times becoming dangerous to small vessels." Strong currents and breakers off Tatoosh Island.',
+   sec:'Source: Coast Pilot 10 §33, §215'},
+
+  {n:'Race Rocks',                 lat:48.298, lon:-123.532, cat:'rip',
+   ctx:'Cluster of bare low rocks with dangerous overfalls and races during bad weather. Tidal currents in Race Passage attain 4 to 6 knots; dangerous tide rips are formed.',
+   sec:'Source: Coast Pilot 10 §33, §68'},
+
+  {n:'Dungeness Spit',             lat:48.185, lon:-123.110, cat:'rip',
+   ctx:'Tide rips "particularly heavy off Dungeness Spit, at times becoming dangerous to small vessels." Shoals extend NE from the spit tip; strong currents submerge the lighted buoy.',
+   sec:'Source: Coast Pilot 10 §33, §173'},
+
+  {n:'Point Wilson',               lat:48.148, lon:-122.758, cat:'rip',
+   ctx:'Tide rips "particularly heavy off Point Wilson, at times becoming dangerous to small vessels." Velocities of 2 to 7 knots from Point Wilson to Point No Point. Shoals extend 0.5 mile NW.',
+   sec:'Source: Coast Pilot 10 §33, Ch.8 §20'},
+
+  {n:'Constance Bank',             lat:48.350, lon:-123.350, cat:'rip',
+   ctx:'Rocky shoal 6.8 miles east of William Head Light, about 3 miles long and 1 mile wide. "Tide rips form in this vicinity. Vessels should not attempt to anchor on the bank."',
+   sec:'Source: Coast Pilot 10 §78'},
+
+  {n:'Duncan Rock',                lat:48.408, lon:-124.742, cat:'rip',
+   ctx:'Small, low, black rock 1 mile north-northwest of Tatoosh Island. Ledges and rocks constrict the passage to less than 0.25 mile with strong currents and breakers.',
+   sec:'Source: Coast Pilot 10 §218'},
+
+  {n:'Turn Point',                 lat:48.690, lon:-123.245, cat:'rip',
+   ctx:'West extremity of Stuart Island. Heavy dangerous tide rips on the ebb between Henry Island and Turn Point; ebb may attain 6 knots during large tides.',
+   sec:'Source: Coast Pilot 10 §203'},
+
+  {n:'East Point',                 lat:48.783, lon:-123.045, cat:'rip',
+   ctx:'East point of Saturna Island. "Heavy dangerous tide rips occur between East Point on Saturna Island and Patos Island and for two miles north in the Strait of Georgia."',
+   sec:'Source: Coast Pilot 10 §203'},
+
+  {n:'Patos Island',               lat:48.785, lon:-122.958, cat:'rip',
+   ctx:'Dangerous tide rips between East Point and Patos Island. "Strong, swirling currents at almost all stages of tide" at the southern entrance to Active Cove.',
+   sec:'Source: Coast Pilot 10 §203, §237'},
+
+  {n:'Middle Bank',                lat:48.383, lon:-123.064, cat:'rip',
+   ctx:'Shoal with least depth of 10 fathoms in the south approach to Haro Strait, 5.7 miles SW of Cattle Point. "Heavy tide rips dangerous to small craft form in the vicinity of this bank in bad weather."',
+   sec:'Source: Coast Pilot 10 §204'},
+
+  {n:'Discovery Island',           lat:48.425, lon:-123.237, cat:'rip',
+   ctx:'Flood current sets east from Discovery Island across the south end of Haro Strait with velocity of 6 knots or more. Heavy tide rips occur around the island.',
+   sec:'Source: Coast Pilot 10 §29, §203'},
+
+  {n:'Beaumont Shoal',             lat:48.450, lon:-123.200, cat:'rip',
+   ctx:'Shoal covered 9 fathoms, 3 miles NW of Middle Bank, marked by a lighted buoy. "In bad weather, heavy tide rips form over these banks."',
+   sec:'Source: Coast Pilot 10 §205'},
+
+  {n:'Spieden Channel',            lat:48.627, lon:-123.195, cat:'rip',
+   ctx:'West entrance where flood currents from Haro Strait and San Juan Channel meet, causing "heavy tide rips and eddies. This channel is not recommended for sailing craft."',
+   sec:'Source: Coast Pilot 10 §224'},
+
+  {n:'Rosenfeld Rock',             lat:48.802, lon:-123.038, cat:'rip',
+   ctx:'Rock covered 1¼ fathoms, 2 miles NNE of East Point (Saturna). Rocks that bare within 900 yards. "Close east of the rock, overfalls and dangerous tide rips are formed."',
+   sec:'Source: Coast Pilot 10 §249'},
+
+  {n:'Waldron Island',             lat:48.725, lon:-123.020, cat:'rip',
+   ctx:'North point (Point Hammond). Passage between Skipjack and Bare Islands "should be avoided because of its high current velocity." High yellow sand bluff terminating abruptly.',
+   sec:'Source: Coast Pilot 10 §233–235'},
+
+  {n:'Limestone Point',            lat:48.624, lon:-123.112, cat:'rip',
+   ctx:'NE portion of San Juan Island, west point of the north entrance to San Juan Channel. "Heavy tide rips and eddies form off Limestone Point and Green Point on Spieden Island."',
+   sec:'Source: Coast Pilot 10 §290'},
+
+  {n:'Mosquito Pass',              lat:48.589, lon:-123.173, cat:'rip',
+   ctx:'Narrow pass between Henry Island and San Juan Island, "available only to small craft with local knowledge." Tidal currents through the restricted passage.',
+   sec:'Source: Coast Pilot 10 §214'},
+
+  {n:'Double Bluff',               lat:47.968, lon:-122.520, cat:'rip',
+   ctx:'Southern terminus of Admiralty Inlet on Whidbey Island. Tidal currents 2 to 7 knots through Admiralty Inlet converge here.',
+   sec:'Source: Coast Pilot 10 Ch.8 §71'},
+
+  {n:'Foulweather Bluff',          lat:47.944, lon:-122.615, cat:'rip',
+   ctx:'"Tide rips north of and around Foulweather Bluff are sufficiently heavy to be dangerous to small craft and to break up log rafts." Most dangerous when ebb from Puget Sound meets Hood Canal ebb against strong NW wind.',
+   sec:'Source: Coast Pilot 10 Ch.8 §82'},
+
+  {n:'N of Cypress Head (Hell\'s Half Acre)', lat:48.580, lon:-122.660, cat:'rip',
+   ctx:'Bellingham Channel between Cypress and Guemes Islands. "Between Cypress, Guemes and Sinclair Islands the tidal currents have considerable velocity." Also §175: "Heavy tide rips and swirls are found off Peapod Rocks." Local name "Hell\'s Half Acre" for the turbulent water north of Cypress Head.',
+   sec:'Source: Coast Pilot 10 §437, §175, §370'},
+
+  {n:'Cypress Head',                   lat:48.568, lon:-122.668, cat:'rip',
+   ctx:'Southeast headland of Cypress Island at the entrance to Bellingham Channel. Tidal currents of considerable velocity squeeze between Cypress and Guemes Islands; buoy NW of Clark Point reported to submerge during strong currents.',
+   sec:'Source: Coast Pilot 10 §437'},
+
+  {n:'N of Guemes Island',             lat:48.590, lon:-122.635, cat:'rip',
+   ctx:'Off Clark Point, the north point of Guemes Island at the north end of Bellingham Channel. "Between Cypress, Guemes and Sinclair Islands the tidal currents have considerable velocity." On ebb, strong westward set from Guemes Channel causes tide rips dangerous to small craft near Belle Rock.',
+   sec:'Source: Coast Pilot 10 §437, §337'},
+
+  // ── CHS Sailing Directions PAC 201 tidal rips ──
+  {n:'Point Atkinson',              lat:49.333, lon:-123.267, cat:'rip',
+   ctx:'Strong tide-rips caused by the meeting of the tidal streams from Burrard Inlet and Howe Sound frequently occur off the point. Convergence rip at a steep-to headland.',
+   sec:'Source: CHS PAC 201 Ch.5 §18'},
+
+  {n:'Brockton Point',              lat:49.300, lon:-123.117, cat:'rip',
+   ctx:'Tidal stream through First Narrows can reach 6 kn. "Extensive rips develop on large tides" where the flood jet exits the narrows and the channel widens abruptly.',
+   sec:'Source: CHS PAC 201 Ch.5 §53'},
+
+  {n:'Lions Gate / Capilano',       lat:49.317, lon:-123.150, cat:'rip',
+   ctx:'On strong ebbs a distinct shear front forms between the ebb jet (4 kn along north shore) and slack water to the south. "Often marked by a line of rips, dangerous to small craft, especially near the mouth of Capilano River."',
+   sec:'Source: CHS PAC 201 Ch.5 §54'},
+
+  {n:'Baynes Channel',              lat:48.450, lon:-123.267, cat:'rip',
+   ctx:'Tidal streams 4–6 kn in the north entrance between Strongtide Islet and Cadboro Point, 2–3 kn in south entrance. "A strong wind opposing the tide will cause heavy tide rips with short, steep seas."',
+   sec:'Source: CHS PAC 201 Ch.6 §29'},
+
+  {n:'Navy Channel (Hope Bay)',     lat:48.823, lon:-123.298, cat:'rip',
+   ctx:'Swanson Channel and Plumper Sound tidal streams branch into Navy Channel, "meeting that flowing through Plumper Sound off Hope Bay, where tide rips are formed." Max flood 2–3 kn at east end.',
+   sec:'Source: CHS PAC 201 Ch.6 §375'},
+
+  {n:'Blunden Islet',               lat:48.744, lon:-123.168, cat:'rip',
+   ctx:'"Blunden Islet usually has strong tide rips in its vicinity." At the entrance to Plumper Sound from Boundary Pass, where tidal streams converge.',
+   sec:'Source: CHS PAC 201 Ch.6 §375'},
+
+  {n:'Gossip Island (Active Pass NE)', lat:48.891, lon:-123.322, cat:'rip',
+   ctx:'"Heavy tide rips occur in the vicinity of Gossip Island, Lion Islets, and Salamanca Point" on the Strait of Georgia side of Active Pass, "particularly with the flood tidal stream and a strong NW wind."',
+   sec:'Source: CHS PAC 201 Ch.6 §451'},
+
+  // ── CHS Sailing Directions PAC 202 tidal rips (Chapters 1–4) ──
+  {n:'Ripple Point',                   lat:50.367, lon:-125.583, cat:'rip',
+   ctx:'Ebb stream 2–4 kn, flood 2–3 kn. "At times there is a race dangerous to small craft in the vicinity of Ripple Point." Also named in the broader Johnstone Strait caution (§190).',
+   sec:'Source: CHS PAC 202 Ch.1 §190, §207–208'},
+
+  {n:'Needham Point',                  lat:50.370, lon:-125.630, cat:'rip',
+   ctx:'"Heavy tide rips are often formed off Needham Point" at Knox Bay, West Thurlow Island. Knox Bay depths too great for anchorage.',
+   sec:'Source: CHS PAC 202 Ch.1 §209'},
+
+  {n:'Race Passage / Earl Ledge',      lat:50.383, lon:-125.833, cat:'rip',
+   ctx:'Tidal streams 5–6 kn in Race and Current Passages with heavy tide rips near Camp Point and Ripple Shoal. "Over and around Earl Ledge heavy tide rips and swirls." West approach "extremely dangerous to small craft when winds oppose the ebb tidal stream."',
+   sec:'Source: CHS PAC 202 Ch.1 §224–229'},
+
+  {n:'Egeria Shoal',                   lat:50.633, lon:-126.767, cat:'rip',
+   ctx:'Tidal streams near Donegal Head attain 4 kn; "in the vicinity of Egeria Shoal there are often tide rips." In Blackfish Sound between Swanson and Malcolm Islands.',
+   sec:'Source: CHS PAC 202 Ch.1 §424, §429'},
+
+  {n:'Greene Point Rapids',            lat:50.433, lon:-125.500, cat:'rip',
+   ctx:'Tidal streams reach 7 kn with "considerable overfalls, whirlpools, and eddies, particularly with large tides." Passage at slack water recommended. Connects Cordero Islands to West Thurlow Island.',
+   sec:'Source: CHS PAC 202 Ch.3 §38–41'},
+
+  {n:'Whirlpool Rapids (Wellbore)',    lat:50.450, lon:-125.750, cat:'rip',
+   ctx:'"Strong whirlpools, upwellings, and back eddies" in the narrowest part of Wellbore Channel alongside Carterer Point. Named for this turbulence. Provides a route bypassing Race/Current Passages.',
+   sec:'Source: CHS PAC 202 Ch.3 §73–77'},
+
+  {n:'Sunderland Channel (west)',      lat:50.450, lon:-125.917, cat:'rip',
+   ctx:'"Tidal streams of 4 kn with heavy tide rips sometimes occur in the west entrance" of Sunderland Channel, where it meets Johnstone Strait. Rates farther east seldom exceed 1½ kn.',
+   sec:'Source: CHS PAC 202 Ch.3 §82–83'},
+
+  {n:'Bate Passage',                   lat:50.917, lon:-127.800, cat:'rip',
+   ctx:'Tidal streams attain 5 kn. "Strong tide rips form off the SW side of Vansittart Island and in the vicinity of Centre Islet." Connects Goletas Channel to Gordon Channel.',
+   sec:'Source: CHS PAC 202 Ch.2 §123'},
+
+  {n:'Ripple Passage',                 lat:50.900, lon:-127.450, cat:'rip',
+   ctx:'Tidal streams attain 4 kn "with heavy tide rips and eddies in places." Separated from Gordon Channel by Deserters and Walker Groups.',
+   sec:'Source: CHS PAC 202 Ch.2 §225–226'},
+
+  {n:'Jeannette Islands',              lat:50.917, lon:-127.417, cat:'rip',
+   ctx:'"Heavy overfalls dangerous to small craft occur between Jeannette Islands and Ghost Island when tidal streams are opposed by strong winds." In Richards Channel, Queen Charlotte Strait.',
+   sec:'Source: CHS PAC 202 Ch.2 §249'},
+
+  {n:'Outer Narrows (Slingsby)',       lat:51.083, lon:-127.650, cat:'rip',
+   ctx:'West entrance of Slingsby Channel. Flood 7 kn, ebb 9 kn. "A west wind against a strong ebb tide forms a steep short swell that can be dangerous to small craft." Navigate only at or near slack water.',
+   sec:'Source: CHS PAC 202 Ch.4 §5–10'}
+];
+
+// ── Map ──
+const map = L.map('map',{zoomControl:true}).setView([49.6,-125.2],7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:18,
+  attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+
+const layers = {};
+for(const [k,v] of Object.entries(CATS)) layers[k] = L.layerGroup().addTo(map);
+
+function makeIcon(cat){
+  const c = CATS[cat];
+  return L.divIcon({
+    className:'',
+    iconSize:[26,26],
+    iconAnchor:[13,13],
+    popupAnchor:[0,-15],
+    html:`<div class="marker-icon" style="background:${c.color}">${c.icon}</div>`
+  });
+}
+
+function popupHTML(p, c){
+  return `
+    <div class="cat" style="background:${c.color}">${c.label.toUpperCase()}</div>
+    <h3>${p.n}</h3>
+    <div class="ctx">${p.ctx||'<i style="color:#aaa">No comment</i>'}</div>
+    <div class="sec">${p.sec||''}</div>`;
+}
+
+PLACES.forEach(p=>{
+  const c = CATS[p.cat];
+  L.marker([p.lat,p.lon],{icon:makeIcon(p.cat), zIndexOffset:c.z})
+    .bindPopup(popupHTML(p,c),{maxWidth:340})
+    .addTo(layers[p.cat]);
+});
+
+// ── Legend ──
+const legend = L.control({position:'bottomright'});
+legend.onAdd = function(){
+  const div = L.DomUtil.create('div','legend');
+  div.innerHTML = '<h4>Justification Doc — Reference Map</h4>';
+  for(const [k,v] of Object.entries(CATS)){
+    const count = PLACES.filter(p=>p.cat===k).length;
+    const el = L.DomUtil.create('div','legend-item',div);
+    el.innerHTML = `<span class="legend-dot" style="background:${v.color}"></span>${v.label} (${count})`;
+    el.addEventListener('click',function(){
+      this.classList.toggle('off');
+      if(this.classList.contains('off')) map.removeLayer(layers[k]);
+      else map.addLayer(layers[k]);
+    });
+  }
+  const note = L.DomUtil.create('div','',div);
+  note.style.cssText = 'font-size:10.5px;color:#888;margin-top:8px;border-top:1px solid #ddd;padding-top:6px';
+  note.textContent = 'Click a category to toggle. Click a marker for context.';
+  L.DomEvent.disableClickPropagation(div);
+  return div;
+};
+legend.addTo(map);
+</script>
+</body>
+</html>
