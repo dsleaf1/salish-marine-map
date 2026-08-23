@@ -44,7 +44,7 @@ const CATS = {
 
 const PLACES = [
   // ── Tidal rips & narrows ──
-  {n:'Nakwakto Rapids',        lat:51.095, lon:-127.508, cat:'rip',
+  {n:'Nakwakto Rapids', lat:51.099, lon:-127.504, cat:'rip',
    ctx:'Signature tidal rip. Named as archetype of the coast\'s most dangerous water — "the standing breaking sea you paddle into at Nakwakto, Seymour, or Deception Pass."',
    sec:'§2 (blocking model), §7 (tidal narrows regime)'},
 
@@ -64,23 +64,23 @@ const PLACES = [
    ctx:'Second site where Gemmrich & Pawlowicz\'s WW3 finds 99th-percentile wave heights under northwesterlies — narrows where strong opposing tidal streams meet a locally generated sea.',
    sec:'§2 (WW3 regional blocking sites), §8'},
 
-  {n:'Okisollo Channel',       lat:50.276, lon:-125.205, cat:'rip',
+  {n:'Okisollo Channel', lat:50.304, lon:-125.233, cat:'rip',
    ctx:'Listed as one of the tidal narrows where spectral saturation is the reliable choice over the monochromatic model.',
    sec:'§7 (tidal narrows regime)'},
 
-  {n:'Dent Rapids',            lat:50.407, lon:-125.212, cat:'rip',
+  {n:'Dent Rapids', lat:50.406, lon:-125.202, cat:'rip',
    ctx:'Listed alongside Nakwakto and Seymour as a tidal narrows site. Light–moderate wind with very strong opposing current.',
    sec:'§7 (tidal narrows regime)'},
 
-  {n:'Cattle Pass',            lat:48.450, lon:-122.962, cat:'rip',
+  {n:'Cattle Pass', lat:48.452, lon:-122.953, cat:'rip',
    ctx:'Could not be validated against SalishSeaCast because it falls inside that model\'s land mask — the nearest reported water is 560 m away. The narrowest part was untestable.',
    sec:'§8 (spatial validation limits)'},
 
-  {n:'Nahwitti Bar',           lat:50.893, lon:-127.870, cat:'rip',
+  {n:'Nahwitti Bar', lat:50.903, lon:-128.008, cat:'rip',
    ctx:'Named as a swell-exposed boundary where no pair of these models is reliable because there is no swell input. Excluded from the steepness layer.',
    sec:'§7 (acknowledged boundary)'},
 
-  {n:'Weynton Passage',        lat:50.581, lon:-126.806, cat:'rip',
+  {n:'Weynton Passage', lat:50.602, lon:-126.821, cat:'rip',
    ctx:'Lies west of SalishSeaCast\'s 126°W domain edge. Not validated by the §8 spatial comparison. Real triangles are 176 m at Weynton — 3× finer than the 560 m display grid.',
    sec:'§8 (limits — northern passes not validated)'},
 
@@ -92,11 +92,11 @@ const PLACES = [
    ctx:'Part of the Cordero–Yuculta rapids chain. Tidal narrows regime — light–moderate wind, very strong opposing current.',
    sec:'§7 (tidal narrows regime, implied)'},
 
-  {n:'Yuculta Rapids',         lat:50.375, lon:-125.151, cat:'rip',
+  {n:'Yuculta Rapids', lat:50.373, lon:-125.151, cat:'rip',
    ctx:'Part of the rapids chain between Bute Inlet and Discovery Passage. Tidal narrows regime.',
    sec:'§7 (tidal narrows regime, implied)'},
 
-  {n:'Tacoma Narrows',         lat:47.281, lon:-122.540, cat:'rip',
+  {n:'Tacoma Narrows North', lat:47.305, lon:-122.547, cat:'rip',
    ctx:'Key Puget Sound rip. The massive inland sound forces its tidal volume through this tight exit, creating heavy turbulence and standing waves.',
    sec:'Source: Tidal Rips (epub) — Puget Sound & Broughtons'},
 
@@ -108,7 +108,7 @@ const PLACES = [
    ctx:'Gulf Islands pass between Galiano and Mayne Islands. Tidal rips form where deep water is forced over shallow sills — "washing machine" water over a quarter to half-mile span.',
    sec:'Source: Tidal Rips (epub) — San Juan & Gulf Islands'},
 
-  {n:'Spieden Island',         lat:48.641, lon:-123.133, cat:'rip',
+  {n:'Spieden Island', lat:48.644, lon:-123.173, cat:'rip',
    ctx:'Tidal rips form around sharp rocky projections on this island north of San Juan Island. Chaotic water where current shears around headlands.',
    sec:'Source: Tidal Rips (epub) — San Juan & Gulf Islands'},
 
@@ -195,7 +195,7 @@ const PLACES = [
    ctx:'Climatology found ERA5 unable to resolve this headland — "the same failure one grid coarser." Illustrates the 2.5 km wind resolution limit.',
    sec:'§6 (L9)'},
 
-  {n:'Cape Mudge',             lat:50.002, lon:-125.197, cat:'rip',
+  {n:'Cape Mudge', lat:49.981, lon:-125.202, cat:'rip',
    ctx:'Tidal streams 7–9 kn. Heavy race between Cape Mudge and Willow Point on south-going streams; "extremely steep and hazardous waves" when opposed by strong SE winds. Pass at or after HW slack.',
    sec:'Source: CHS PAC 202 Ch.1 §37–38; also §7 (Discovery Passage entrance)'},
 
@@ -208,7 +208,7 @@ const PLACES = [
    ctx:'Cluster of bare low rocks with dangerous overfalls and races during bad weather. Tidal currents in Race Passage attain 4 to 6 knots; dangerous tide rips are formed.',
    sec:'Source: Coast Pilot 10 §33, §68'},
 
-  {n:'Dungeness Spit',             lat:48.185, lon:-123.110, cat:'rip',
+  {n:'Dungeness Spit', lat:48.196, lon:-123.098, cat:'rip',
    ctx:'Tide rips "particularly heavy off Dungeness Spit, at times becoming dangerous to small vessels." Shoals extend NE from the spit tip; strong currents submerge the lighted buoy.',
    sec:'Source: Coast Pilot 10 §33, §173'},
 
@@ -220,7 +220,7 @@ const PLACES = [
    ctx:'Rocky shoal 6.8 miles east of William Head Light, about 3 miles long and 1 mile wide. "Tide rips form in this vicinity. Vessels should not attempt to anchor on the bank."',
    sec:'Source: Coast Pilot 10 §78'},
 
-  {n:'Duncan Rock',                lat:48.408, lon:-124.742, cat:'rip',
+  {n:'Duncan Rock', lat:48.407, lon:-124.742, cat:'rip',
    ctx:'Small, low, black rock 1 mile north-northwest of Tatoosh Island. Ledges and rocks constrict the passage to less than 0.25 mile with strong currents and breakers.',
    sec:'Source: Coast Pilot 10 §218'},
 
@@ -260,7 +260,7 @@ const PLACES = [
    ctx:'North point (Point Hammond). Passage between Skipjack and Bare Islands "should be avoided because of its high current velocity." High yellow sand bluff terminating abruptly.',
    sec:'Source: Coast Pilot 10 §233–235'},
 
-  {n:'Limestone Point',            lat:48.624, lon:-123.112, cat:'rip',
+  {n:'Limestone Point', lat:48.624, lon:-123.109, cat:'rip',
    ctx:'NE portion of San Juan Island, west point of the north entrance to San Juan Channel. "Heavy tide rips and eddies form off Limestone Point and Green Point on Spieden Island."',
    sec:'Source: Coast Pilot 10 §290'},
 
@@ -276,15 +276,15 @@ const PLACES = [
    ctx:'"Tide rips north of and around Foulweather Bluff are sufficiently heavy to be dangerous to small craft and to break up log rafts." Most dangerous when ebb from Puget Sound meets Hood Canal ebb against strong NW wind.',
    sec:'Source: Coast Pilot 10 Ch.8 §82'},
 
-  {n:'N of Cypress Head (Hell\'s Half Acre)', lat:48.580, lon:-122.660, cat:'rip',
+  {n:'N of Cypress Head (Hell\'s Half Acre)', lat:48.621, lon:-122.723, cat:'rip',
    ctx:'Bellingham Channel between Cypress and Guemes Islands. "Between Cypress, Guemes and Sinclair Islands the tidal currents have considerable velocity." Also §175: "Heavy tide rips and swirls are found off Peapod Rocks." Local name "Hell\'s Half Acre" for the turbulent water north of Cypress Head.',
    sec:'Source: Coast Pilot 10 §437, §175, §370'},
 
-  {n:'Cypress Head',                   lat:48.568, lon:-122.668, cat:'rip',
+  {n:'Cypress Head South', lat:48.567, lon:-122.668, cat:'rip',
    ctx:'Southeast headland of Cypress Island at the entrance to Bellingham Channel. Tidal currents of considerable velocity squeeze between Cypress and Guemes Islands; buoy NW of Clark Point reported to submerge during strong currents.',
    sec:'Source: Coast Pilot 10 §437'},
 
-  {n:'N of Guemes Island',             lat:48.590, lon:-122.635, cat:'rip',
+  {n:'N of Guemes Island', lat:48.597, lon:-122.646, cat:'rip',
    ctx:'Off Clark Point, the north point of Guemes Island at the north end of Bellingham Channel. "Between Cypress, Guemes and Sinclair Islands the tidal currents have considerable velocity." On ebb, strong westward set from Guemes Channel causes tide rips dangerous to small craft near Belle Rock.',
    sec:'Source: Coast Pilot 10 §437, §337'},
 
@@ -313,20 +313,20 @@ const PLACES = [
    ctx:'"Blunden Islet usually has strong tide rips in its vicinity." At the entrance to Plumper Sound from Boundary Pass, where tidal streams converge.',
    sec:'Source: CHS PAC 201 Ch.6 §375'},
 
-  {n:'Gossip Island (Active Pass NE)', lat:48.891, lon:-123.322, cat:'rip',
+  {n:'Gossip Island (Active Pass NE)', lat:48.884, lon:-123.312, cat:'rip',
    ctx:'"Heavy tide rips occur in the vicinity of Gossip Island, Lion Islets, and Salamanca Point" on the Strait of Georgia side of Active Pass, "particularly with the flood tidal stream and a strong NW wind."',
    sec:'Source: CHS PAC 201 Ch.6 §451'},
 
   // ── CHS Sailing Directions PAC 202 tidal rips (Chapters 1–4) ──
-  {n:'Ripple Point',                   lat:50.367, lon:-125.583, cat:'rip',
+  {n:'Ripple Point', lat:50.369, lon:-125.576, cat:'rip',
    ctx:'Ebb stream 2–4 kn, flood 2–3 kn. "At times there is a race dangerous to small craft in the vicinity of Ripple Point." Also named in the broader Johnstone Strait caution (§190).',
    sec:'Source: CHS PAC 202 Ch.1 §190, §207–208'},
 
-  {n:'Needham Point',                  lat:50.370, lon:-125.630, cat:'rip',
+  {n:'Needham Point', lat:50.384, lon:-125.602, cat:'rip',
    ctx:'"Heavy tide rips are often formed off Needham Point" at Knox Bay, West Thurlow Island. Knox Bay depths too great for anchorage.',
    sec:'Source: CHS PAC 202 Ch.1 §209'},
 
-  {n:'Race Passage / Earl Ledge',      lat:50.383, lon:-125.833, cat:'rip',
+  {n:'Race Passage / Earl Ledge', lat:50.387, lon:-125.846, cat:'rip',
    ctx:'Tidal streams 5–6 kn in Race and Current Passages with heavy tide rips near Camp Point and Ripple Shoal. "Over and around Earl Ledge heavy tide rips and swirls." West approach "extremely dangerous to small craft when winds oppose the ebb tidal stream."',
    sec:'Source: CHS PAC 202 Ch.1 §224–229'},
 
@@ -334,33 +334,110 @@ const PLACES = [
    ctx:'Tidal streams near Donegal Head attain 4 kn; "in the vicinity of Egeria Shoal there are often tide rips." In Blackfish Sound between Swanson and Malcolm Islands.',
    sec:'Source: CHS PAC 202 Ch.1 §424, §429'},
 
-  {n:'Greene Point Rapids',            lat:50.433, lon:-125.500, cat:'rip',
+  {n:'Greene Point Rapids', lat:50.448, lon:-125.520, cat:'rip',
    ctx:'Tidal streams reach 7 kn with "considerable overfalls, whirlpools, and eddies, particularly with large tides." Passage at slack water recommended. Connects Cordero Islands to West Thurlow Island.',
    sec:'Source: CHS PAC 202 Ch.3 §38–41'},
 
-  {n:'Whirlpool Rapids (Wellbore)',    lat:50.450, lon:-125.750, cat:'rip',
+  {n:'Whirlpool Rapids (Wellbore)', lat:50.470, lon:-125.780, cat:'rip',
    ctx:'"Strong whirlpools, upwellings, and back eddies" in the narrowest part of Wellbore Channel alongside Carterer Point. Named for this turbulence. Provides a route bypassing Race/Current Passages.',
    sec:'Source: CHS PAC 202 Ch.3 §73–77'},
 
-  {n:'Sunderland Channel (west)',      lat:50.450, lon:-125.917, cat:'rip',
+  {n:'Sunderland Channel (west)', lat:50.460, lon:-125.987, cat:'rip',
    ctx:'"Tidal streams of 4 kn with heavy tide rips sometimes occur in the west entrance" of Sunderland Channel, where it meets Johnstone Strait. Rates farther east seldom exceed 1½ kn.',
    sec:'Source: CHS PAC 202 Ch.3 §82–83'},
 
-  {n:'Bate Passage',                   lat:50.917, lon:-127.800, cat:'rip',
+  {n:'Bate Passage', lat:50.906, lon:-127.820, cat:'rip',
    ctx:'Tidal streams attain 5 kn. "Strong tide rips form off the SW side of Vansittart Island and in the vicinity of Centre Islet." Connects Goletas Channel to Gordon Channel.',
    sec:'Source: CHS PAC 202 Ch.2 §123'},
 
-  {n:'Ripple Passage',                 lat:50.900, lon:-127.450, cat:'rip',
+  {n:'Ripple Passage', lat:50.902, lon:-127.455, cat:'rip',
    ctx:'Tidal streams attain 4 kn "with heavy tide rips and eddies in places." Separated from Gordon Channel by Deserters and Walker Groups.',
    sec:'Source: CHS PAC 202 Ch.2 §225–226'},
 
-  {n:'Jeannette Islands',              lat:50.917, lon:-127.417, cat:'rip',
+  {n:'Jeannette Islands', lat:50.923, lon:-127.445, cat:'rip',
    ctx:'"Heavy overfalls dangerous to small craft occur between Jeannette Islands and Ghost Island when tidal streams are opposed by strong winds." In Richards Channel, Queen Charlotte Strait.',
    sec:'Source: CHS PAC 202 Ch.2 §249'},
 
-  {n:'Outer Narrows (Slingsby)',       lat:51.083, lon:-127.650, cat:'rip',
+  {n:'Outer Narrows (Slingsby)', lat:51.086, lon:-127.643, cat:'rip',
    ctx:'West entrance of Slingsby Channel. Flood 7 kn, ebb 9 kn. "A west wind against a strong ebb tide forms a steep short swell that can be dangerous to small craft." Navigate only at or near slack water.',
-   sec:'Source: CHS PAC 202 Ch.4 §5–10'}
+   sec:'Source: CHS PAC 202 Ch.4 §5–10'},
+
+  // ── Paddling the Salish Sea — Rob Casey (2024) ──
+  {n:'Lawrence Point',          lat:48.669, lon:-122.746, cat:'rip',
+   ctx:'"Strong east-flowing currents move along the shore of Orcas Island on large flood exchanges in this area, the opposite of what might be expected, and they flow the same way on large ebbs too! The current can produce strong tide rips as it passes over a shoal not shown on chart 18423 SC, just east of a line between Lawrence Point and Clark Island."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Point Doughty',           lat:48.714, lon:-122.946, cat:'rip',
+   ctx:'"Rocks and shoals are extensive off Point Doughty and, together with swift currents, produce significant tide rips."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'James Island',            lat:48.525, lon:-122.780, cat:'rip',
+   ctx:'"Be especially careful in the area north of James Island, where dangerous rips can form when the westward-flowing ebb from Thatcher Pass and the southward current in the strait meet an opposing wind. One kayak fatality here was apparently due to this situation."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Rosario Strait',          lat:48.598, lon:-122.800, cat:'rip',
+   ctx:'NOAA chart 18423 SC provides the following warning for Rosario Strait, presumably applying to Thatcher, Lopez, Peavine, and Obstruction Passes: "On the ebb tide, southerly winds cause dangerous tide rips off the entrance to the passes."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Blakeley Island',         lat:48.532, lon:-122.800, cat:'rip',
+   ctx:'"A powerful eddy line and associated tide rips may form during strong ebb currents in Rosario Strait at the easternmost point of Blakely Island."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Parker Reef',             lat:48.726, lon:-122.911, cat:'rip',
+   ctx:'"The greatest hazard en route is Parker Reef: it consists of two separate shoals located less than halfway across. The area around the reefs can develop dangerous rips in strong currents, sometimes exceeding 2 knots, which are made worse by contrary winds. A kayaking fatality has occurred here."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Green Point',             lat:48.632, lon:-123.109, cat:'rip',
+   ctx:'"At the eastern end of Spieden Channel, between Green Point on Spieden Island and Limestone Point on San Juan Island, runs some of the fastest water in the San Juan Islands; it can be over 5 knots on the year\'s biggest tides. Most significant are two powerful and extensive tide rips that form off both points on both the flood and ebb sets of the tide."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Staines Point',           lat:48.392, lon:-123.306, cat:'rip',
+   ctx:'"Swift tidal rapids occur off the point and can be quite rough, particularly on the flood tide."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Porlier Pass',            lat:49.008, lon:-123.599, cat:'rip',
+   ctx:'"The largest gate pass south of Seymour Narrows, with currents reaching 10 knots, Porlier Pass is potentially the most dangerous of all the Gulf Islands passes. Currents here can generate large whirlpools and overfalls — from Race Point to the reef opposite Dionisio Point — and these are especially hazardous if current is flowing against strong easterly winds."',
+   sec:'Source: 48north.com, Passes of the Gulf Islands (William Kelly, Feb 2025)'},
+
+  {n:'Cape Horn',               lat:47.202, lon:-122.956, cat:'rip',
+   ctx:'"Just before entering Pickering Passage from Hammersley Inlet, you will pass the jutting prominence of Cape Horn, which helps create a strong rip tide at high tidal exchanges."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Dana Passage',            lat:47.160, lon:-122.884, cat:'rip',
+   ctx:'"Dana Passage currents can reach almost 3 knots at times, and rips can be lively here, especially with an opposing wind."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Tacoma Narrows South',    lat:47.259, lon:-122.560, cat:'rip',
+   ctx:'"Avoid the Narrows when the currents oppose the wind, which can create dangerous conditions. Watch out for boating traffic. You should be comfortable with rough water, as boils, rips, and waves can develop."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Point Partridge',         lat:48.218, lon:-122.777, cat:'rip',
+   ctx:'"Swirling tidal currents and rips collide with wind swell from the Strait of Juan de Fuca and Puget Sound, and large surf is possible at Point Partridge."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Hope Island West',        lat:48.396, lon:-122.582, cat:'rip',
+   ctx:'"Avoid the strongest currents at the west end of Hope Island unless you have the skills to handle strong eddy lines and tide rips."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Hope Island East',        lat:48.401, lon:-122.556, cat:'rip',
+   ctx:'"During large tidal exchanges, currents at both the east and west ends of Hope Island can be swift and dangerous for anyone not skilled in dealing with moving water. Both ends can have sharp eddy lines and possible tide rips."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Burrows Island',          lat:48.488, lon:-122.696, cat:'rip',
+   ctx:'"Expect to find strong eddy lines and nearby tide rips in the channels separating Burrows Island from Fidalgo Head."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Port Townsend Canal',     lat:48.031, lon:-122.731, cat:'rip',
+   ctx:'"Watch for boating traffic, fast current, and large rips in the canal. Use eddies to move up current."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Marrowstone Point',       lat:48.102, lon:-122.685, cat:'rip',
+   ctx:'"A noisy tide rip north of the point can be heard from the bluffs above. Keep your distance if you\'re not comfortable with rough water — but for those who are, it\'s a fun source of standing waves."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'},
+
+  {n:'Cypress Head North',      lat:48.569, lon:-122.669, cat:'rip',
+   ctx:'"The waters off Point Wilson can get very rough from wind and ocean swell. Don\'t venture around the point unless you have strong experience in tidal currents, rough water, and surf. A noticeable tide rip occurs northwest of the point — fun surfable standing waves for some, a hazard to others. Several kayakers have needed to be rescued off the point in recent years."',
+   sec:'Source: Paddling the Salish Sea, Rob Casey (2024)'}
 ];
 
 // ── Map ──
