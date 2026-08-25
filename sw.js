@@ -17,7 +17,7 @@
  * one file serves both trees: index.html (deployed) and unified_map.html (the
  * cape working copy under the local dev server).
  */
-const CACHE_VERSION = "salishmap-shell-v26";   // 2026-08-16a: PDF EXPORT + PHONE GL FIX. (1) PDF screenshot capture via jsPDF — synchronous GL snapshot before any await, so the fill survives without preserveDrawingBuffer. (2) GL canvas DPR capped to 1 on mobile (FILL_DPR) — phone GPU can't sustain native DPR with preserveDrawingBuffer removed. (3) Wave Height smooth:false — the fragment shader's mix/clamp interpolation branch kills the phone's GL context; hard-binned ramp is visually equivalent at 2.2 km resolution. (4) setSteepStyle re-shade — switches between height/course/rings by rewriting spd3 instead of forcing full 100K-cell physics re-decode. (5) pdfExport async — awaits navigator.share() before nulling jsPDF. (6) DEV_ORIGIN LAN match — sw.js bypass now covers 192.168.* dev servers. (7) Context-loss diagnostic shows mode/style/pdf state.
+const CACHE_VERSION = "salishmap-shell-v28";   // 2026-08-25a: BASEMAP FALLBACK — USGS topo tiles 404 above z12 in Canada (US-only survey); tileerror handler now swaps in Esri topo for those cells, with baseInk filter skipped on fallback tiles.
 // v22 was 2026-08-08c: About-blurb TRIM only (David, 2026-08-08) — the v21 changelog entry was cut roughly in half (677 chars): the cyan-swatch fix note, the refit sample counts and the per-band condemned-window figure came out; every user-facing caveat stayed (no ring is not calm / wind sea only, no ocean swell / direction only and uncalibrated / heuristic, not a wave forecast). NOTHING else changed — no code, no physics.js (still db0083056cb1), no display behaviour. This bump exists ONLY because index.html changed and phone/Safari users would otherwise keep the v21 shell
 // v21 was 2026-08-08b: THE WAVE LAYER GOES PUBLIC AGAIN (David's "option 2", 2026-08-08). STEEP_ON flips from the ?dev=1 gate to true, so the "Waves" Layer option is enabled for everyone and the 2026-08-04 withdrawal wording (disabled option label, phone label, per-mode note) is DELETED. All THREE displays ship: Wave Steepness keeps ALL THREE ring levels (grey Medium / orange High / magenta Very high) with NO wind memory; Wave Height SHIPS (new — continuous metres, Hamp = Hs x hf via one extra fast-path hazSpec per cell in decodeSteep, stretched 13-stop WAVEH ramp, uSmooth shader uniform that is 0 for every other layer); Quartering (beta) SHIPS, labelled uncalibrated. Also fixed: the Wave Height Key drew its "current set" arrow swatch in the RINGS display's cyan (#00b4d8/#023047), but Wave Height arrows come from drawArrows() in near-black rgba(20,20,30,.92) — the swatch is now a dark arrow matching the ink. UI ONLY: physics.js UNCHANGED at sha1 db0083056cb1 (the option-D refit shipped in v20); physics_regression 12/12, quarter_tests 9 EXPECTED failures
 // v20 was 2026-08-08a: OPTION D — physics.js REFITTED (David's call). windSea()'s open-ocean saturation coefficient 0.24 is replaced by a law refitted against SalishSeaCast WaveWatch III (604 days, 3 Strait of Georgia stations, 260,928 samples), with two constants PINNED to Gemmrich & Pawlowicz (2020)'s published buoy values (mh 0.50 SPM, Ah 0.09) rather than fitted. The old law read Hs 1.48x high in the median; the new one is 0.949 and flat to 0.96-1.06 across every wind bin 5-60 kt, with no blanket multiplier. relaxSea() (wind memory) ships DORMANT — no caller passes history, so it returns the equilibrium sea unchanged and force_explorer.html is numerically untouched. Falsely-condemned good 2-hour windows drop 41.7% -> 22.1% (all winds) and 21.8% -> 2.7% at High. index.html UNCHANGED; this bump exists because physics.js is precached below. modelHash was 3e07c2026658 and no longer holds
@@ -31,6 +31,7 @@ const SHELL = [
   "./unified_map.html",
   "./manifest.webmanifest",
   "./physics.js",
+  "./rip_sites.json",
   "./force_explorer.html",
   "./vendor/leaflet.js",
   "./vendor/leaflet.css",
@@ -99,9 +100,19 @@ self.addEventListener("fetch", (event) => {
     // like force_explorer.html open offline from the cache; everything else fetches).
   }
 
-  // Same-origin GETs: cache-first (ignoreSearch so ?v= / ?lat= versioned URLs hit),
-  // fall back to network on a miss.
-  event.respondWith(
-    caches.match(req, { ignoreSearch: true }).then((cached) => cached || fetch(req))
-  );
+  // Shell assets: cache-first so the PWA opens offline.
+  // Everything else (reference docs, data files): network-first so edits appear
+  // immediately — the SW was trapping stale copies of non-shell files like
+  // justification_reference_map.html because they'd been fetched once.
+  const last = url.pathname.split("/").pop();
+  const isShell = SHELL.some((s) => s.endsWith(last));
+  if (isShell) {
+    event.respondWith(
+      caches.match(req, { ignoreSearch: true }).then((cached) => cached || fetch(req))
+    );
+  } else {
+    event.respondWith(
+      fetch(req).catch(() => caches.match(req, { ignoreSearch: true }))
+    );
+  }
 });

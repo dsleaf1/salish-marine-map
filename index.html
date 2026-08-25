@@ -547,6 +547,9 @@ const STEEP_ZONES=[
 ];
 const inSteepZone=(lo,la)=>STEEP_ZONES.some(b=>lo>=b[0]&&lo<=b[2]&&la>=b[1]&&la<=b[3]);
 
+let ripSites=null;
+fetch('rip_sites.json').then(r=>r.ok?r.json():null).then(d=>{ripSites=d;}).catch(()=>{});
+
 const BASE_WATER="#c9e2ee";            // approx. USGS base-map water, so the currents legend matches
 const GRAY_LAND="#f0efef";             // approx. Esri light-gray canvas, for the wind legend
 const hex2rgb=h=>[parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255];
@@ -669,9 +672,18 @@ function setBase(key){
   // container it lands on, the ink (--base-ink) to the .leaflet-tile images inside it (they must stay on
   // separate elements — see the CSS at the top for the iOS Safari reason).
   // labels sit in the "labels" pane and the field/arrow canvases in "fields", so neither is touched.
-  // maxNativeZoom is undefined for both remaining bases (neither caps below z16); kept so a
-  // shallow-cached base can be re-added without re-deriving why blank tiles appear past its top level.
+  // maxNativeZoom is undefined for both remaining bases; USGS tops out at z12 in Canada (US-only
+  // survey) — the tileerror handler below swaps in Esri topo for those cells.
   const b=BASES[key]; baseLayer=L.tileLayer(b.url,{maxZoom:16,maxNativeZoom:b.maxNativeZoom,attribution:b.attr,className:"baseTiles",crossOrigin:true}).addTo(map);
+  // USGS tiles 404 above z12 in Canada; fall back to Esri topo for those cells.
+  // The baseInk SVG filter is tuned for USGS colours (B−R=+52) and is a near no-op on Esri (B−R=+4),
+  // so skip it on fallback tiles — also avoids a compositing glitch when every viewport tile is Esri.
+  if(key==="usgs") baseLayer.on("tileerror",function(e){
+    if(e.tile._fallback) return;
+    e.tile._fallback=true;
+    e.tile.style.filter="none";
+    e.tile.src=BASES.topo.url.replace("{z}",e.coords.z).replace("{y}",e.coords.y).replace("{x}",e.coords.x);
+  });
   // add the reference-labels overlay only when the mode wants labels AND the base has none of its own,
   // otherwise topo/USGS bases (which bake in their own labels) would show a doubled set of city names.
   const want=MODES[mode].labels && !b.ownLabels;
@@ -1231,6 +1243,14 @@ function courseRoseSVG(t,m,crs){
         +` spot's worst heading; rings 25/50/75%, <i>not</i> a severity scale.`
         +`<br>White = your course · magenta = worst · cyan = current set.</div>`;
 }
+function ripAnnotation(lat,lon,band){
+  if(!ripSites||band<2) return '';
+  const cos=Math.cos(lat*Math.PI/180); let best=null, bestD=4;
+  for(const r of ripSites){ const dLa=(r.lat-lat)*111.32, dLo=(r.lon-lon)*111.32*cos, d=dLa*dLa+dLo*dLo;
+    if(d<bestD){bestD=d;best=r;}}
+  if(!best) return '';
+  return `<div class="hz" style="color:#d03b3b">⚠ Known rip: ${best.n}${best.src.startsWith('§')?'':' ('+best.src+')'}</div>`;
+}
 function doHover(){
   hoverRAF=0; if(!hoverLL) return;
   const lat=hoverLL.lat, lon=hoverLL.lng; let html=null;
@@ -1309,6 +1329,7 @@ function doHover(){
       const cSpd=fcur?fine.spd:t.spd[m], cDir=fcur?fine.dir:t.dir[m];
       html=`<b>Roughness — ${quiet?"nothing reported here":RING_WORD[Math.min(band,4)]}</b>`
         +`<div class="hz" style="color:${col}">${quiet?"Below the layer's reporting threshold — read the numbers below, not this line, and treat it as unrated rather than calm":RING_LBL[Math.min(band,4)]}</div>`
+        +ripAnnotation(t.cy[m],t.cx[m],band)
         +row("Wind", `${Math.round(t.wKt[m])} kt from ${compass(t.wFrom[m])} (${Math.round(t.wFrom[m])}°)`)
         +row("Current", cSpd>=0.1?`${cSpd.toFixed(1)} kt toward ${compass(cDir)} (${Math.round(cDir)}°)`:"slack (&lt;0.1 kt)")
         +row("Wind-sea", t.Hs[m]>0.05?`${t.Hs[m].toFixed(1)} m @ ${t.Tp[m].toFixed(1)} s`:"negligible")
@@ -1342,6 +1363,7 @@ function doHover(){
       const w=nearestWetCell(t,lat,lon,WIND_BORROW_DEG), fcur=!isNaN(fineOnly.spd);
       html=`<b>Roughness — ${quiet?"nothing reported here":RING_WORD[Math.min(band,4)]}</b>`
         +`<div class="hz" style="color:${col}">${quiet?"Below the layer's reporting threshold — read the numbers below, not this line, and treat it as unrated rather than calm":RING_LBL[Math.min(band,4)]}</div>`
+        +ripAnnotation(lat,lon,band)
         +row("Wind", w
             ? `${Math.round(t.wKt[w.i])} kt from ${compass(t.wFrom[w.i])} (${Math.round(t.wFrom[w.i])}°)`
               +` <span style="opacity:.6">— nearest reported square, ${w.km.toFixed(1)} km away</span>`
