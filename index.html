@@ -307,6 +307,8 @@
       <select id="arrows"><option value="0">Off</option><option value="26">Normal</option><option value="18" selected>Dense</option><option value="12">Denser</option></select></div>
     <div class="fld chk" id="windArrowsFld" style="display:none">
       <input type="checkbox" id="windArrows"><label for="windArrows">Wind arrows</label></div>
+    <div class="fld chk" id="cvdFld">
+      <input type="checkbox" id="cvdPalette" checked><label for="cvdPalette">Colour-blind palette</label></div>
     <div class="fld" id="opFld"><label for="opacity">Fill opacity <span id="opacityVal"></span></label>
       <!-- step 0.01: both mode defaults (0.72, 0.85) must be exactly representable or the thumb
            snaps to a neighbouring step and jumps on the first drag -->
@@ -380,12 +382,16 @@ const DRY=-1000;                            // sentinel written into the GL spee
 
 // ---- Currents: kt bins (byte/10), arrows point the way the water goes (TOWARD) ----
 const CUR_EDGES=[1,2,3,4,5,7,9];
-const CUR_COL=["#c2d9eb","#78b0d4","#3084ba","#0b5d94","#d4a030","#9a6a12","#5c3808","#2a1800"];
+const CUR_COL_STD=["#3288bd","#66c2a5","#abdda4","#a6d96a","#fee08b","#fdae61","#f46d43","#d53e4f"];
+const CUR_COL_CVD=["#c2d9eb","#78b0d4","#3084ba","#0b5d94","#d4a030","#9a6a12","#5c3808","#2a1800"];
+let CUR_COL=CUR_COL_CVD;
 const CUR_LBL=["0–1","1–2","2–3","3–4","4–5","5–7","7–9","9+"];
 // ---- Wind: Beaufort km/h bins (byte = km/h), arrows point DOWNWIND (byte dir is FROM) ----
 // Edges/colours/names copied verbatim from hrdps_map.html so the two apps read identically.
 const W_EDGES=[1,6,12,20,29,39,50,62,75,89,103,118];
-const W_COL=["#d0e2f0","#a2c8e2","#70add4","#3e90c2","#1a72aa","#0a5690","#d4a030","#b07a18","#884e10","#603008","#1e1860","#0e0e3a","#060618"];
+const W_COL_STD=["#dfeaf2","#bfe3ec","#a6dd9f","#d7e84f","#f3c44d","#f0893b","#e44f2c","#c71d2b","#9a2240","#6b2a5a","#4a2370","#2c1a55","#14102e"];
+const W_COL_CVD=["#d0e2f0","#a2c8e2","#70add4","#3e90c2","#1a72aa","#0a5690","#d4a030","#b07a18","#884e10","#603008","#1e1860","#0e0e3a","#060618"];
+let W_COL=W_COL_CVD;
 const W_NAMES=["Calm","Light air","Light breeze","Gentle","Moderate","Fresh","Strong","Near gale","Gale","Strong gale","Storm","Violent storm","Hurricane"];
 const kt = k => Math.round(k/1.852);
 
@@ -597,6 +603,20 @@ const MODES={
             legendOver:GRAY_LAND, mesh:false, ringsAlpha:0.5 },   // ringsAlpha = wind-fill opacity in "rings" display
 };
 let mode="current";
+
+// ---- Palette toggle: CVD-safe (deuteranopia) vs standard ----
+let cvdActive=true;
+try{ cvdActive=localStorage.getItem("sm_cvd_palette")!=="0"; }catch(_){}
+if(!cvdActive){ CUR_COL=CUR_COL_STD; W_COL=W_COL_STD; MODES.current.cols=CUR_COL; MODES.wind.cols=W_COL; }
+function applyCvdPalette(on){
+  cvdActive=on;
+  CUR_COL=on?CUR_COL_CVD:CUR_COL_STD; W_COL=on?W_COL_CVD:W_COL_STD;
+  MODES.current.cols=CUR_COL; MODES.wind.cols=W_COL;
+  try{ localStorage.setItem("sm_cvd_palette",on?"1":"0"); }catch(_){}
+  if(gl){ applyModeGL(); render(); }
+  if(typeof buildLegend==="function") buildLegend();
+}
+
 /* Steepness has TWO displays, chosen by the "Sea State" control: "rings" (labelled Wave Steepness —
    hazard rings + current arrows over the full wind field, the original wind-map format) and "course"
    (labelled Quartering (beta) — via physics.js's quarterHaz, the directional model, separate from the
@@ -2593,6 +2613,8 @@ $("mode").onchange=e=>setMode(e.target.value);
 $("steepStyle").onchange=e=>setSteepStyle(e.target.value);
 $("course").onchange=e=>setCourse(+e.target.value);
 $("windArrows").onchange=()=>{ buildLegend(); render(); };   // legend gains the Beaufort key when on
+$("cvdPalette").checked=cvdActive;
+$("cvdPalette").onchange=e=>applyCvdPalette(e.target.checked);
 $("base").onchange=e=>{ basePref[mode]=e.target.value; setBase(e.target.value); updateURL(); };
 $("arrows").onchange=()=>{ rememberTp(); syncArrowsTgl(); render(); };
 $("opacity").oninput=e=>setAlpha(+e.target.value);
