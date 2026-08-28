@@ -380,12 +380,12 @@ const DRY=-1000;                            // sentinel written into the GL spee
 
 // ---- Currents: kt bins (byte/10), arrows point the way the water goes (TOWARD) ----
 const CUR_EDGES=[1,2,3,4,5,7,9];
-const CUR_COL=["#3288bd","#66c2a5","#abdda4","#a6d96a","#fee08b","#fdae61","#f46d43","#d53e4f"];
+const CUR_COL=["#c2d9eb","#78b0d4","#3084ba","#0b5d94","#d4a030","#9a6a12","#5c3808","#2a1800"];
 const CUR_LBL=["0–1","1–2","2–3","3–4","4–5","5–7","7–9","9+"];
 // ---- Wind: Beaufort km/h bins (byte = km/h), arrows point DOWNWIND (byte dir is FROM) ----
 // Edges/colours/names copied verbatim from hrdps_map.html so the two apps read identically.
 const W_EDGES=[1,6,12,20,29,39,50,62,75,89,103,118];
-const W_COL=["#dfeaf2","#bfe3ec","#a6dd9f","#d7e84f","#f3c44d","#f0893b","#e44f2c","#c71d2b","#9a2240","#6b2a5a","#4a2370","#2c1a55","#14102e"];
+const W_COL=["#d0e2f0","#a2c8e2","#70add4","#3e90c2","#1a72aa","#0a5690","#d4a030","#b07a18","#884e10","#603008","#1e1860","#0e0e3a","#060618"];
 const W_NAMES=["Calm","Light air","Light breeze","Gentle","Moderate","Fresh","Strong","Near gale","Gale","Strong gale","Storm","Violent storm","Hurricane"];
 const kt = k => Math.round(k/1.852);
 
