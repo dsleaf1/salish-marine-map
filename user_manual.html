@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Salish Marine Map — User Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@1,300;1,500&family=Nunito+Sans:wght@400;600;700&display=swap">
+<style>
+/* ── Token system ─────────────────────────────────────────────── */
+:root {
+  --navy:      #0a3d62;
+  --navy-mid:  #1a5c8a;
+  --teal:      #0e8fa8;
+  --teal-lt:   #d6f0f5;
+  --amber:     #b45309;
+  --amber-lt:  #fef3e2;
+  --ice:       #f0f5fa;
+  --ice-mid:   #e2edf5;
+  --line:      #cddbe9;
+  --slate:     #334d65;
+  --muted:     #5a7a9a;
+  --bg:        #f0f5fa;
+  --card:      #ffffff;
+  --text:      #1b2d3e;
+  --head:      #0a3d62;
+  --sidebar-w: 230px;
+  --gap:       32px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --navy:     #1a5c8a;
+    --navy-mid: #2a7ab0;
+    --teal:     #19b4cf;
+    --teal-lt:  #0d2f36;
+    --amber:    #e07b28;
+    --amber-lt: #2a1e08;
+    --ice:      #0d1e2c;
+    --ice-mid:  #162a3a;
+    --line:     #1e3a52;
+    --slate:    #8ab0cc;
+    --muted:    #5a8aaa;
+    --bg:       #0b1c2a;
+    --card:     #0f2233;
+    --text:     #c4d8ea;
+    --head:     #7ab8d8;
+  }
+}
+:root[data-theme="dark"] {
+  --navy:     #1a5c8a;
+  --navy-mid: #2a7ab0;
+  --teal:     #19b4cf;
+  --teal-lt:  #0d2f36;
+  --amber:    #e07b28;
+  --amber-lt: #2a1e08;
+  --ice:      #0d1e2c;
+  --ice-mid:  #162a3a;
+  --line:     #1e3a52;
+  --slate:    #8ab0cc;
+  --muted:    #5a8aaa;
+  --bg:       #0b1c2a;
+  --card:     #0f2233;
+  --text:     #c4d8ea;
+  --head:     #7ab8d8;
+}
+
+/* ── Reset & base ────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Nunito Sans', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+}
+a { color: var(--teal); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1,h2,h3 { color: var(--head); text-wrap: balance; margin-top: 0; }
+h2 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-weight: 300;
+  font-size: 1.65rem;
+  letter-spacing: -.01em;
+  margin-bottom: .3em;
+}
+h3 {
+  font-family: 'Nunito Sans', system-ui, sans-serif;
+  font-size: .88rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--navy);
+  margin-bottom: .5em;
+}
+p { margin: 0 0 1em; }
+strong { font-weight: 700; color: var(--text); }
+
+/* ── Page shell ─────────────────────────────────────────────── */
+.page-header {
+  background: var(--navy);
+  color: #fff;
+  padding: 28px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.page-header h1 {
+  color: #fff;
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-weight: 300;
+  font-size: 1.5rem;
+  margin: 0;
+  letter-spacing: -.01em;
+}
+.page-header .sub {
+  font-size: .82rem;
+  opacity: .75;
+  margin-top: 4px;
+}
+.map-link {
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.3);
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: .85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background .15s;
+}
+.map-link:hover { background: rgba(255,255,255,.22); text-decoration: none; }
+.map-link::before { content: "↖ "; }
+
+.layout {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  min-height: calc(100vh - 80px);
+  max-width: 1120px;
+  margin: 0 auto;
+  gap: 0;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────── */
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 28px 16px 28px 20px;
+  border-right: 1px solid var(--line);
+  background: var(--ice);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+.sidebar-label {
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--muted);
+  padding: 16px 6px 4px;
+}
+.sidebar-label:first-child { padding-top: 0; }
+.toc-link {
+  display: block;
+  font-size: .83rem;
+  color: var(--slate);
+  padding: 5px 8px;
+  border-radius: 6px;
+  line-height: 1.3;
+  transition: background .12s, color .12s;
+}
+.toc-link:hover { background: var(--ice-mid); color: var(--head); text-decoration: none; }
+.toc-link.active { background: var(--ice-mid); color: var(--navy); font-weight: 700; }
+.toc-link.sub { padding-left: 18px; }
+
+/* ── Main content ────────────────────────────────────────────── */
+main {
+  padding: 36px 40px 60px;
+  max-width: 780px;
+}
+section { margin-bottom: 52px; scroll-margin-top: 20px; }
+
+/* Platform badges */
+.badges { display: inline-flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.badge {
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.badge.both  { background: var(--teal-lt); color: var(--teal); }
+.badge.desk  { background: var(--ice-mid); color: var(--navy); }
+.badge.phone { background: #ede9f5; color: #5a3888; }
+
+/* Quick-look line */
+.ql {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--slate);
+  margin-bottom: .75em;
+  line-height: 1.4;
+}
+
+/* Control cards */
+.card-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+.ctrl-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px 20px;
+  position: relative;
+}
+.ctrl-card h3 { margin-bottom: 6px; }
+.ctrl-card .ql { font-size: .95rem; margin-bottom: .6em; }
+.ctrl-card p:last-child { margin-bottom: 0; }
+.ctrl-card .ctrl-badges { position: absolute; top: 16px; right: 16px; }
+
+/* Caution callout */
+.caution {
+  background: var(--amber-lt);
+  border-left: 3px solid var(--amber);
+  border-radius: 0 6px 6px 0;
+  padding: 10px 14px;
+  margin: 12px 0;
+  font-size: .9rem;
+  color: var(--amber);
+}
+.caution strong { color: var(--amber); }
+
+/* Info callout */
+.info {
+  background: var(--teal-lt);
+  border-left: 3px solid var(--teal);
+  border-radius: 0 6px 6px 0;
+  padding: 10px 14px;
+  margin: 12px 0;
+  font-size: .9rem;
+}
+
+/* Color swatch inline */
+.sw {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,.15);
+  vertical-align: middle;
+  margin-right: 3px;
+}
+
+/* Ring illustration */
+.ring-row { display: flex; flex-wrap: wrap; gap: 14px; margin: 12px 0; align-items: center; }
+.ring-item { display: flex; align-items: center; gap: 8px; font-size: .88rem; }
+.ring-circle {
+  width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto;
+  background: transparent;
+}
+
+/* Layer pill (visual shorthand for layer names) */
+.layer-pill {
+  display: inline-block;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  padding: 2px 10px;
+  border-radius: 20px;
+  border: 1.5px solid;
+  vertical-align: middle;
+}
+.layer-pill.cur  { border-color: #3a9ebe; color: #3a9ebe; }
+.layer-pill.wind { border-color: #b07a18; color: #b07a18; }
+.layer-pill.wave { border-color: #8e1c6b; color: #8e1c6b; }
+
+/* Divider */
+.divider { border: none; border-top: 1px solid var(--line); margin: 36px 0; }
+
+/* Data table */
+table { width: 100%; border-collapse: collapse; font-size: .88rem; overflow-x: auto; display: block; }
+th { background: var(--ice-mid); text-align: left; font-weight: 700; padding: 8px 12px; }
+td { padding: 7px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 1px solid var(--line); }
+
+/* ── Mobile layout ───────────────────────────────────────────── */
+@media (max-width: 740px) {
+  :root { --sidebar-w: 0px; }
+  .layout { grid-template-columns: 1fr; }
+  .sidebar {
+    position: static; height: auto; overflow-x: auto; overflow-y: hidden;
+    padding: 10px 16px;
+    border-right: none; border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .sidebar nav { flex-direction: row; gap: 0; flex-wrap: nowrap; }
+  .sidebar-label { display: none; }
+  .toc-link { padding: 6px 10px; display: inline-block; white-space: nowrap; }
+  .toc-link.sub { padding-left: 10px; }
+  main { padding: 24px 20px 48px; max-width: 100%; }
+  .ctrl-card .ctrl-badges { position: static; margin-bottom: 8px; }
+}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div>
+    <h1>Salish Marine Map — User Guide</h1>
+    <div class="sub">Queen Charlotte Sound · Johnstone Strait · Puget Sound</div>
+  </div>
+  <a class="map-link" href="index.html">Open the map</a>
+</div>
+
+<div class="layout">
+
+<!-- ── Sidebar / TOC ───────────────────────────────────────── -->
+<aside class="sidebar" aria-label="Contents">
+  <nav id="toc">
+    <span class="sidebar-label">Overview</span>
+    <a class="toc-link" href="#overview">About the map</a>
+    <a class="toc-link" href="#platform">Desktop vs phone</a>
+
+    <span class="sidebar-label">Controls</span>
+    <a class="toc-link" href="#layer">Layer selector</a>
+    <a class="toc-link sub" href="#sea-state">Sea State mode</a>
+    <a class="toc-link sub" href="#course">Course (steer)</a>
+    <a class="toc-link" href="#region">Region</a>
+    <a class="toc-link" href="#arrows">Arrows</a>
+    <a class="toc-link" href="#opacity">Fill opacity</a>
+    <a class="toc-link" href="#cvd">Colour-blind palette</a>
+    <a class="toc-link" href="#timeline">Forecast timeline</a>
+
+    <span class="sidebar-label">Map interaction</span>
+    <a class="toc-link" href="#readout">Tap / hover readout</a>
+    <a class="toc-link" href="#zoom">Zoom and pan</a>
+    <a class="toc-link" href="#legend">Legend / Key</a>
+
+    <span class="sidebar-label">Layers explained</span>
+    <a class="toc-link" href="#currents">Currents</a>
+    <a class="toc-link" href="#wind">Wind</a>
+    <a class="toc-link" href="#steepness">Wave Steepness</a>
+    <a class="toc-link" href="#wave-height">Wave Height</a>
+    <a class="toc-link" href="#quartering">Quartering (beta)</a>
+
+    <span class="sidebar-label">Tools</span>
+    <a class="toc-link" href="#pdf">PDF export</a>
+    <a class="toc-link" href="#offline">Offline / save</a>
+    <a class="toc-link" href="#freshness">Data freshness</a>
+  </nav>
+</aside>
+
+<!-- ── Main ───────────────────────────────────────────────── -->
+<main>
+
+<!-- ── Overview ──────────────────────────────────────────── -->
+<section id="overview">
+  <h2>About the map</h2>
+  <p class="ql">One interactive map covering the paddling waters from Queen Charlotte Sound to Puget Sound, showing currents, wind, and sea-state conditions up to 48 hours ahead.</p>
+
+  <p>The map overlays three forecast layers on the same base chart — <span class="layer-pill cur">Currents</span>, <span class="layer-pill wind">Wind</span>, and <span class="layer-pill wave">Waves</span> — so you can switch between them without losing your position on the water. Tap or hover any wet cell to read the actual numbers behind the colour.</p>
+
+  <table>
+    <tr><th>Layer</th><th>Data source</th><th>Resolution</th><th>Forecast window</th></tr>
+    <tr><td><span class="layer-pill cur">Currents</span></td><td>SSCOFS (NOAA FVCOM mesh)</td><td>~400 m at narrows</td><td>48 h</td></tr>
+    <tr><td><span class="layer-pill wind">Wind</span></td><td>HRDPS (Environment Canada)</td><td>2.5 km</td><td>48 h</td></tr>
+    <tr><td><span class="layer-pill wave">Waves</span></td><td>Derived from HRDPS + SSCOFS, validated against WaveWatch III</td><td>Same as Currents mesh</td><td>48 h</td></tr>
+  </table>
+  <p style="font-size:.82rem;color:var(--muted);margin-top:6px;">Wave data covers protected inland waters only — the model cannot represent ocean swell.</p>
+</section>
+
+<!-- ── Platform differences ──────────────────────────────── -->
+<section id="platform">
+  <h2>Desktop vs phone</h2>
+  <p class="ql">The same data, differently arranged. The phone hides a few controls to give the map more room, and swaps some gestures for bigger buttons.</p>
+
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges">
+        <span class="badge desk">Desktop only</span>
+      </div>
+      <h3>Controls present on desktop but hidden on phone</h3>
+      <p>The <strong>Region</strong> selector (navigate by pinching and panning instead), the <strong>Arrow density</strong> selector (phone always uses densest arrows), and the <strong>▶ Play</strong> button (phone uses ◀ ▶ step buttons) are hidden on screens narrower than 640 px.</p>
+    </div>
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges">
+        <span class="badge phone">Phone only</span>
+      </div>
+      <h3>Controls added on phone</h3>
+      <p>The <strong>◀ ▶ hour-step buttons</strong> replace the play button for manual timeline control. The <strong>− +</strong> nudge buttons flank the Fill opacity slider (a precise drag is hard on a small slider). The <strong>Key</strong> button opens the colour legend as a full-width overlay at the bottom of the screen.</p>
+    </div>
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges">
+        <span class="badge phone">Phone only</span>
+      </div>
+      <h3>Tap readout pins at the bottom</h3>
+      <p>On desktop, the value readout follows your cursor. On phone, tapping any wet cell pins the readout to the bottom of the screen so your thumb doesn't cover the numbers. Tap the <strong>✕</strong> or tap empty water to dismiss it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Controls ───────────────────────────────────────────── -->
+<section id="layer">
+  <h2>Layer selector</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge both">Both</span></div>
+      <p class="ql">Switches the entire map between the three data layers.</p>
+      <p>The <strong>Layer</strong> dropdown has three choices: <span class="layer-pill cur">Currents (SSCOFS)</span>, <span class="layer-pill wind">Wind (HRDPS 2.5 km)</span>, and <span class="layer-pill wave">Waves</span>. The map view stays centred on your current position when you switch — a deliberate design so you can compare conditions at the same spot.</p>
+      <p>When <strong>Waves</strong> is selected a second selector, <strong>Sea State</strong>, appears to the right.</p>
+    </div>
+  </div>
+</section>
+
+<section id="sea-state">
+  <h2>Sea State display</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge both">Both</span></div>
+      <p class="ql">Chooses how wave data is displayed — three different lenses on the same underlying model.</p>
+      <p>Only visible when the Layer is set to <strong>Waves</strong>. Options:</p>
+      <ul>
+        <li><strong>Wave Steepness</strong> — coloured rings on the map showing where wind-against-current is building a steep, short sea. The default display.</li>
+        <li><strong>Wave Height</strong> — continuous colour fill showing estimated wind-sea height in metres.</li>
+        <li><strong>Quartering (beta)</strong> — shows the worst heading to be steering in each cell. Uncalibrated; treat as directional guidance only.</li>
+      </ul>
+      <div class="info">All three displays use the same model and cover the same protected-water zones. Switching between them does not change the underlying physics — only what aspect is visualised.</div>
+    </div>
+  </div>
+</section>
+
+<section id="course">
+  <h2>Course (steer)</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge both">Both</span></div>
+      <p class="ql">Sets your planned heading so the tap readout can report your personal quartering angle.</p>
+      <p>Only visible in the <strong>Quartering (beta)</strong> display. A compass arrow beside the dropdown rotates to point in your chosen direction. The map's arrow ticks always show the <em>worst</em> heading for each cell regardless of this setting — the Course selector only affects what the tap readout reports for your specific heading.</p>
+    </div>
+  </div>
+</section>
+
+<section id="region">
+  <h2>Region</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge desk">Desktop only</span></div>
+      <p class="ql">Jumps the map view to a named area of coast.</p>
+      <p>A navigation shortcut for the six modelled regions: <em>Puget Sound, San Juan &amp; Gulf Islands, Northern Georgia Strait, Juan de Fuca, Broughtons &amp; Discovery, Johnstone Str → QCS</em>. Selecting a region pans and zooms the map to that area. On phone, pinch-and-pan is the equivalent.</p>
+    </div>
+  </div>
+</section>
+
+<section id="arrows">
+  <h2>Arrows</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge desk">Desktop only</span></div>
+      <p class="ql">Sets how densely direction arrows are drawn.</p>
+      <p>Four options: <strong>Off</strong>, <strong>Normal</strong>, <strong>Dense</strong> (default), <strong>Denser</strong>. The <strong>➤ On/Off</strong> button beside the opacity slider is a one-click shortcut to hide arrows entirely and bring them back at the same density — useful when arrows are cluttering the fill and you want a clear read of the colour.</p>
+      <p>On phone the density is fixed at Denser. The ➤ On/Off button is available on both platforms.</p>
+    </div>
+  </div>
+</section>
+
+<section id="opacity">
+  <h2>Fill opacity</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge both">Both</span></div>
+      <p class="ql">Controls how transparent the colour fill is over the base map.</p>
+      <p>Slide to 0% to see the base map with no fill at all (arrows and mesh outlines remain). At 100% the fill is fully opaque. Default values: <strong>85%</strong> in Currents mode, <strong>72%</strong> in Wind mode.</p>
+      <p>On phone, <strong>−</strong> and <strong>+</strong> buttons on either side of the slider adjust it in 5% steps — easier to hit than dragging the slider thumb with a wet finger.</p>
+    </div>
+  </div>
+</section>
+
+<section id="cvd">
+  <h2>Colour-blind palette</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge both">Both</span></div>
+      <p class="ql">Switches to a palette designed for people with colour vision deficiency. On by default.</p>
+      <p>The default (checked) palette uses blue→teal tones for low speeds and amber→brown tones for high speeds, avoiding red/green combinations. Uncheck to switch to the standard palette with more saturated greens and reds. The choice persists for your session.</p>
+    </div>
+  </div>
+</section>
+
+<section id="timeline">
+  <h2>Forecast timeline</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge both">Both</span></div>
+      <p class="ql">Steps through the 48-hour forecast, one hour at a time.</p>
+      <p>The slider covers 0 to 48 hours from the most recent model run. The time label at the right shows the UTC day and hour, with the offset from the run in brackets — e.g. <em>Sun 14:00 (+6h)</em>.</p>
+      <p><strong>Desktop:</strong> The <strong>▶ Play</strong> button auto-advances through all 48 frames. Click again to pause.</p>
+      <p><strong>Phone:</strong> The <strong>◀ ▶</strong> buttons step back or forward one hour. Tapping the slider anywhere also jumps to that time directly.</p>
+      <div class="info">Both the Currents (SSCOFS) and Wind (HRDPS) models run on their own schedules. The timeline label shows how fresh each is; the staleness banner below the map flags when either is more than a few hours old.</div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ── Map interaction ────────────────────────────────────── -->
+<section id="readout">
+  <h2>Tap / hover readout</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge desk">Desktop — hover</span></div>
+      <p class="ql">Move the mouse over any coloured cell to see its values in a floating tooltip.</p>
+      <p>The readout opens after a 0.3-second pause and refreshes up to ten times per second as you move. It shows the position (lat/lon), the layer-specific values (current speed and direction, wind speed and Beaufort force, or wave metrics), and the model run timestamp for that cell.</p>
+    </div>
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge phone">Phone — tap</span></div>
+      <p class="ql">Tap any wet cell to pin the readout at the bottom of the screen.</p>
+      <p>The pinned panel shows the same detail as the desktop hover. Tap the <strong>✕</strong> in its top-right corner, or tap any empty area of the map, to dismiss it. The panel scrolls if there is more to read.</p>
+    </div>
+  </div>
+</section>
+
+<section id="zoom">
+  <h2>Zoom and pan</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge both">Both</span></div>
+      <p class="ql">Standard map navigation — scroll to zoom on desktop, pinch-and-pan on phone.</p>
+      <p><strong>Desktop:</strong> scroll wheel zooms, click-and-drag pans. The <strong>+</strong> and <strong>−</strong> buttons in the top-left corner of the map also zoom.</p>
+      <p><strong>Phone:</strong> pinch to zoom, drag to pan. The map fills the screen so every pixel is usable. At zoom level 10 and above, the Currents layer switches from the regional overview to the full-resolution FVCOM mesh — individual triangles become visible at the narrows.</p>
+    </div>
+  </div>
+</section>
+
+<section id="legend">
+  <h2>Legend / Key</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge desk">Desktop</span></div>
+      <p class="ql">The colour key appears below the map and updates automatically when you switch layers.</p>
+      <p>For the Currents and Wind layers the key shows the full colour ramp with speed ranges. For Wave Steepness it shows the ring colours and their meanings. For Wave Height it shows the gradient and the height scale. Extended explanatory text in the Wave Height and Quartering keys is collapsed by default — click <em>"more…"</em> to expand it.</p>
+    </div>
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge phone">Phone</span></div>
+      <p class="ql">A <strong>Key</strong> button at the bottom-right of the map opens the legend as an overlay panel.</p>
+      <p>Tap <strong>Key</strong> to open; the panel appears at the bottom of the screen with a close button. It scrolls if the content is taller than half the screen.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ── Layers explained ───────────────────────────────────── -->
+<section id="currents">
+  <h2>Currents</h2>
+  <p class="ql">Tidal and residual current speed and direction from the SSCOFS ocean model.</p>
+  <p>The <span class="layer-pill cur">Currents</span> layer uses the NOAA SSCOFS FVCOM model — a finite-element mesh that follows the shape of the channels rather than snapping to a fixed grid. This means Johnstone Strait, Seymour Narrows, and the San Juan passes get realistic geometry instead of a blocky approximation.</p>
+  <p><strong>Colour scale (CVD-safe, default):</strong></p>
+  <div class="ring-row" style="gap:8px;">
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.85rem"><span class="sw" style="background:#c2d9eb;"></span> 0–1 kt (unshaded)</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.85rem"><span class="sw" style="background:#78b0d4;"></span> 1–2</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.85rem"><span class="sw" style="background:#3084ba;"></span> 2–3</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.85rem"><span class="sw" style="background:#0b5d94;"></span> 3–4</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.85rem"><span class="sw" style="background:#d4a030;"></span> 4–5</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.85rem"><span class="sw" style="background:#9a6a12;"></span> 5–7</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.85rem"><span class="sw" style="background:#5c3808;"></span> 7–9</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.85rem"><span class="sw" style="background:#2a1800;"></span> 9+ kt</span>
+  </div>
+  <p>Arrows point <strong>toward</strong> the direction the water is moving. At zoom 10 and above the map switches to the native FVCOM triangles; below that it shows a regional overview that covers the whole coast simultaneously.</p>
+  <div class="caution"><strong>Peaks under-read at narrows.</strong> The model's resolution at very tight passages (under ~200 m across) means peak speeds can be lower than you'd measure with a current meter. The colour gives the right sense of timing and direction; treat extreme values with an extra margin.</div>
+</section>
+
+<section id="wind">
+  <h2>Wind</h2>
+  <p class="ql">10-metre wind speed and direction from the HRDPS 2.5 km forecast, colour-coded on the Beaufort scale.</p>
+  <p>The <span class="layer-pill wind">Wind</span> layer uses Environment Canada's High Resolution Deterministic Prediction System at 2.5 km grid spacing. Arrows point <strong>downwind</strong> (the direction the wind is blowing toward).</p>
+  <p><strong>Beaufort scale, CVD-safe palette:</strong></p>
+  <table>
+    <tr><th>Force</th><th>Speed (kt)</th><th>Name</th><th>Colour</th></tr>
+    <tr><td>0</td><td>&lt;1</td><td>Calm</td><td><span class="sw" style="background:#d0e2f0;"></span> pale blue</td></tr>
+    <tr><td>1</td><td>1–3</td><td>Light air</td><td><span class="sw" style="background:#a2c8e2;"></span></td></tr>
+    <tr><td>2</td><td>4–6</td><td>Light breeze</td><td><span class="sw" style="background:#70add4;"></span></td></tr>
+    <tr><td>3</td><td>7–10</td><td>Gentle</td><td><span class="sw" style="background:#3e90c2;"></span></td></tr>
+    <tr><td>4</td><td>11–15</td><td>Moderate</td><td><span class="sw" style="background:#1a72aa;"></span></td></tr>
+    <tr><td>5</td><td>16–21</td><td>Fresh</td><td><span class="sw" style="background:#0a5690;"></span> deep blue</td></tr>
+    <tr><td>6</td><td>22–27</td><td>Strong</td><td><span class="sw" style="background:#d4a030;"></span> amber</td></tr>
+    <tr><td>7</td><td>28–33</td><td>Near gale</td><td><span class="sw" style="background:#b07a18;"></span></td></tr>
+    <tr><td>8</td><td>34–40</td><td>Gale</td><td><span class="sw" style="background:#884e10;"></span></td></tr>
+    <tr><td>9</td><td>41–47</td><td>Strong gale</td><td><span class="sw" style="background:#603008;"></span> dark brown</td></tr>
+    <tr><td>10–12</td><td>48+</td><td>Storm → Hurricane</td><td><span class="sw" style="background:#1e1860;"></span> near-black</td></tr>
+  </table>
+  <div class="caution"><strong>2.5 km resolution misses local acceleration.</strong> Channels aligned with the prevailing flow (Johnstone Strait, Hecate Strait) are well-represented. Tight inlets and passages that funnel wind can be under-forecast by a force or more. Always check the station observations.</div>
+</section>
+
+<section id="steepness">
+  <h2>Wave Steepness</h2>
+  <p class="ql">Coloured rings mark where wind-against-current is building a short, steep sea. No ring means the model has nothing to say — not that the water is calm.</p>
+  <p>Each ring is centred on a current mesh cell. The colour and thickness encode the hazard band. The fill behind the rings is the wind speed (same Beaufort ramp as the Wind layer), so you can see the driving force and its effect at the same glance.</p>
+
+  <div class="ring-row">
+    <div class="ring-item">
+      <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="11" fill="none" stroke="#6e747a" stroke-width="3.5" opacity=".95"/>
+      </svg>
+      <div><strong>Medium</strong><br><span style="font-size:.82rem;color:var(--muted)">Steepening chop</span></div>
+    </div>
+    <div class="ring-item">
+      <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="11" fill="none" stroke="#e8590c" stroke-width="4.5" opacity=".96"/>
+      </svg>
+      <div><strong>High</strong><br><span style="font-size:.82rem;color:var(--muted)">Steep, short seas</span></div>
+    </div>
+    <div class="ring-item">
+      <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="12" fill="none" stroke="#8e1c6b" stroke-width="6" opacity=".98"/>
+      </svg>
+      <div><strong>Very high</strong><br><span style="font-size:.82rem;color:var(--muted)">Breaking / blocking seas</span></div>
+    </div>
+  </div>
+
+  <div class="caution"><strong>No ring ≠ safe water.</strong> Bands below Medium (negligible and low) are deliberately not drawn. The model only speaks when it has something worth saying. Open coast and swell-exposed approaches are outside the modelled zones and will show no rings regardless of conditions.</div>
+
+  <p>The rings appear only within the <strong>protected inland water zones</strong> — Puget Sound, San Juan and Gulf Islands, Georgia Strait, Juan de Fuca east of Race Rocks, Broughtons, and Johnstone Strait. The outer coast and open Hecate Strait are excluded because fetch-limited wind-sea growth cannot represent ocean swell.</p>
+  <p>A small cyan dot and arrow inside each ring shows the underlying current direction and speed at that cell.</p>
+</section>
+
+<section id="wave-height">
+  <h2>Wave Height</h2>
+  <p class="ql">A continuous colour fill showing estimated wind-sea height in metres — the one wave quantity that can be cross-checked against a physical measurement.</p>
+  <p>The fill goes from pale aqua (calm, &lt;0.1 m) through teal and blue to magenta (rough, approaching 3 m). The colour scale is deliberately stretched at the low end — 98% of the water sits below 0.5 m — so the range a paddler actually encounters uses most of the colour space. Heights above 2 m run deep blue through indigo to magenta so a gale reads immediately different from a stiff breeze.</p>
+  <div class="info"><strong>Wind sea only, no ocean swell.</strong> This is the local wind-driven sea, not total sea height. In open water or at the mouth of an inlet where swell enters, actual wave heights will be higher than shown.</div>
+  <div class="info"><strong>Validated:</strong> Wave Height is compared against WaveWatch III — a peer-reviewed global wave model — and agrees within about 5% on average. It is the most reliable of the three Waves displays.</div>
+  <p>The opposing-current amplification from the steepness model is included: in a rip running against the wind, the displayed height is higher than the wind alone would produce on still water.</p>
+</section>
+
+<section id="quartering">
+  <h2>Quartering (beta)</h2>
+  <p class="ql">A magenta open-headed arrow in each cell points to the worst heading to be paddling. Direction only — the severity is not calibrated.</p>
+  <p>Quartering seas — waves hitting at roughly 45–90° to your course — are the most destabilising for a loaded sea kayak. This display shows which direction would put you broadside to the worst sea in each cell.</p>
+  <p>The arrow appears only where the estimated wave height is above 0.36 m (Rayleigh Hmax ≈ 0.67 m), so small-chop cells where quartering is irrelevant stay clean. Below that threshold no arrow is drawn.</p>
+  <div class="caution"><strong>Uncalibrated. No dataset exists that records kayak capsize by heading in these waters.</strong> The worst heading shown is a model output, not a tested threshold. Use it as directional context alongside the Height and Steepness displays, not as a severity scale.</div>
+  <p>The <strong>Course (steer)</strong> selector lets you set your actual planned heading; the tap readout then reports your personal angle relative to the worst sea at that cell. The map arrows always show the worst heading for the cell, regardless of your chosen course.</p>
+</section>
+
+<hr class="divider">
+
+<!-- ── Tools ──────────────────────────────────────────────── -->
+<section id="pdf">
+  <h2>PDF export</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge both">Both</span></div>
+      <p class="ql">Capture multiple map snapshots and export them as a single PDF — useful for printing a trip plan.</p>
+      <p>Click <strong>📄 Capture PDF</strong> to enter capture mode. A blue badge appears at the top right of the map showing how many snapshots you've taken. From there:</p>
+      <ul>
+        <li>Navigate to a view (layer, time, zoom) you want to capture.</li>
+        <li>Click <strong>+ Add</strong> to snap that view.</li>
+        <li>Repeat for as many views as you need (different regions, different forecast hours, different layers).</li>
+        <li>Click <strong>Save PDF</strong> to download the compiled file.</li>
+        <li>Click <strong>✕</strong> to cancel without saving.</li>
+      </ul>
+      <div class="info">On phones, high device pixel ratios can occasionally drop the WebGL map while building the PDF. The app automatically reduces rendering resolution on mobile to prevent this.</div>
+    </div>
+  </div>
+</section>
+
+<section id="offline">
+  <h2>Saving for offline use</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge both">Both</span></div>
+      <p class="ql">Download the current forecast data so the map works without a cell signal.</p>
+      <p>Click <strong>⬇ Save offline</strong> to cache the base map tiles and forecast data for the current region. Once saved, the map loads and updates from the cache even in airplane mode.</p>
+      <p><strong>↻ Refresh</strong> fetches the latest forecast data and updates the cache. The app also refreshes automatically when it detects a newer model run.</p>
+      <div class="caution">The saved data is a snapshot of the forecast at the time you saved it. At sea, the forecast does not update until you return to cell coverage and hit Refresh.</div>
+    </div>
+  </div>
+</section>
+
+<section id="freshness">
+  <h2>Data freshness</h2>
+  <div class="card-grid">
+    <div class="ctrl-card">
+      <div class="ctrl-badges badges"><span class="badge both">Both</span></div>
+      <p class="ql">The staleness banner shows how old each model run is. Two clocks — one for Currents, one for Wind — because the models update on different schedules.</p>
+      <p>Clock colour tells you how fresh the data is:</p>
+      <ul>
+        <li><span style="background:#1a7f37;color:#fff;padding:1px 8px;border-radius:10px;font-size:.82rem;font-weight:700;">Green</span> — recent run, data is current.</li>
+        <li><span style="background:#b45309;color:#fff;padding:1px 8px;border-radius:10px;font-size:.82rem;font-weight:700;">Amber</span> — model run is a few hours old. Still reliable for the near term.</li>
+        <li><span style="background:#b42318;color:#fff;padding:1px 8px;border-radius:10px;font-size:.82rem;font-weight:700;">Red</span> — stale. The server may have missed a run, or you may be offline.</li>
+      </ul>
+      <p>If you are online and the clock is amber or red, click <strong>↻ Refresh</strong> to fetch the latest data.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+</div><!-- /.layout -->
+
+<script>
+/* Sidebar active-link tracking */
+(function(){
+  const links = document.querySelectorAll('.toc-link[href^="#"]');
+  const sections = Array.from(links).map(l => document.querySelector(l.getAttribute('href'))).filter(Boolean);
+  function update(){
+    const scrollY = window.scrollY + 60;
+    let active = null;
+    sections.forEach((s,i) => { if(s.offsetTop <= scrollY) active = i; });
+    links.forEach((l,i) => l.classList.toggle('active', i === active));
+  }
+  window.addEventListener('scroll', update, {passive:true});
+  update();
+})();
+</script>
+</body>
+</html>
