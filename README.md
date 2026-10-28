@@ -1,6 +1,6 @@
-# Salish Marine Map
+# NW Coast Wind and Current
 
-One zoomable map of the Salish Sea and BC inside waters (Puget Sound → Queen Charlotte Sound):
+One zoomable map of the NW Coast (Puget Sound → Sitka):
 flip between **surface currents** (NOAA SSCOFS) and **wind** (ECCC HRDPS 2.5 km) at the same view.
 
 Live: https://dsleaf1.github.io/salish-marine-map/

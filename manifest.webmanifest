@@ -1,7 +1,7 @@
 {
-  "name": "Salish Marine Map",
-  "short_name": "Salish Map",
-  "description": "Currents, wind and roughness for Queen Charlotte Sound to Puget Sound.",
+  "name": "NW Coast Wind and Current",
+  "short_name": "NW Coast",
+  "description": "Wind and currents for the NW Coast: Puget Sound to Sitka.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

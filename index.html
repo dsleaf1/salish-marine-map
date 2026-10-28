@@ -6,10 +6,10 @@
 <meta name="theme-color" content="#0a3d62">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="Salish Map">
+<meta name="apple-mobile-web-app-title" content="NW Coast">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<title>Unified Marine Map — currents · wind · steepness (WebGL)</title>
+<title>NW Coast Wind and Current</title>
 <!-- Leaflet 1.9.4 vendored (SRI-verified against unpkg): the offline shell (sw.js) can only
      cache same-origin assets, and a CDN copy would leave the whole app dead in airplane mode. -->
 <link rel="stylesheet" href="vendor/leaflet.css"/>
@@ -376,8 +376,9 @@ const REGIONS=[
   ["Broughtons & Discovery",[50.45,-125.9],10,"broughtons-discovery",[-127.6,50.15,-124.3,51.2]],
   ["Johnstone Str → QCS",[50.95,-127.7],10,"johnstone-qcs-south",[-129.0,50.7,-126.3,52.13]],
 ];
+const WIND_OV_KEY="whole-coast";   // whole-coast wind overview, Puget Sound -> Sitka (58N)
 const MESH_ZOOM=10;                         // >= this: native mesh tiles; below: whole-coast overview
-const FULL_EXTENT=[[47.0,-128.8],[51.6,-122.2]];
+const FULL_EXTENT=[[46.9,-137.0],[58.0,-122.0]];
 const DRY=-1000;                            // sentinel written into the GL speed buffer; always discarded
 
 // ---- Currents: kt bins (byte/10), arrows point the way the water goes (TOWARD) ----
@@ -654,7 +655,7 @@ const PTL=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Vancouver',weekday:
 // zoomAnimation off keeps the WebGL overlay perfectly registered with the tiles
 // Lock the view to the model: can't zoom out past the SSCOFS extent or pan off it.
 const map=L.map("map",{zoomAnimation:false,fadeAnimation:false,
-  maxBounds:L.latLngBounds([[46.85,-129.1],[51.75,-122.35]]),maxBoundsViscosity:1.0});
+  maxBounds:L.latLngBounds([[46.7,-137.6],[58.4,-121.9]]),maxBoundsViscosity:1.0});
 // The bookmarked ?lat/lon/z(/h), captured ONCE at script time: updateURL() starts rewriting the
 // query string as soon as the map first moves, so a later reader sees its own echo — h was the
 // cold-load restore miss's other half (a slow manifest fetch let updateURL overwrite ?h with 0
@@ -1555,7 +1556,7 @@ async function saveOffline(){
       await ocPut("bin/field",wire); await ocPut("man/field.json",JSON.stringify(fm),"application/json");
     }
     if(!(ix.base && ix.base.runWind===wm.run && await haveCached("bin/wind"))){
-      const wire=await dlProgress(R2+"/hrdps/overview.bin","wind overview");
+      const wire=await dlProgress(R2+"/hrdps/"+WIND_OV_KEY+".bin","wind overview");
       await ocPut("bin/wind",wire); await ocPut("man/hrdps.json",JSON.stringify(wm),"application/json");
     }
     ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run};
@@ -1601,7 +1602,7 @@ async function refreshNow(){   // manifests first (~5 KB); re-download only pack
         const wire=await dlProgress(R2+"/sscofs/field/overview.bin","current overview");
         await ocPut("bin/field",wire); await ocPut("man/field.json",JSON.stringify(fm),"application/json"); changed=true; }
       if(ix.base.runWind!==wm.run || !await haveCached("bin/wind")){
-        const wire=await dlProgress(R2+"/hrdps/overview.bin","wind overview");
+        const wire=await dlProgress(R2+"/hrdps/"+WIND_OV_KEY+".bin","wind overview");
         await ocPut("bin/wind",wire); await ocPut("man/hrdps.json",JSON.stringify(wm),"application/json"); changed=true; }
       ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run};
     }
@@ -1845,8 +1846,8 @@ async function loadWindOnce(){
   // Live-manifest guard: same coherence rule as loadOverviewOnce.
   if(!bytes && isOnline() && manSrc.wm==="live"){
     try{
-      setStatus("Loading HRDPS wind overview (~3.4 MB)…");
-      const wire=new Uint8Array(await (await netFetch(R2+"/hrdps/overview.bin",180000)).arrayBuffer());
+      setStatus("Loading HRDPS wind overview (~11 MB)…");
+      const wire=new Uint8Array(await (await netFetch(R2+"/hrdps/"+WIND_OV_KEY+".bin",180000)).arrayBuffer());
       bytes=wire;
       if(ix.base) ocPut("bin/wind",wire)                       // write-through (wire body, pre-gunzip)
         .then(()=>ocPut("man/hrdps.json",JSON.stringify(windMan),"application/json"))
@@ -1863,8 +1864,8 @@ async function loadWindOnce(){
     wman=pm; src="cache"; RUN_WIND=wman.run;
     if(!adoptAxis(wman.hours.map(isoToMs))) throw new Error("saved packs share no forecast hours");
   }
-  const ov=wman.regions.overview;
-  if(!ov) throw new Error("no 'overview' region in the HRDPS manifest — run hrdps-ingest first");
+  const ov=wman.regions[WIND_OV_KEY];
+  if(!ov) throw new Error("no whole-coast region in the HRDPS manifest — run hrdps-ingest first");
   if(bytes[0]===0x1f&&bytes[1]===0x8b) bytes=await gunzip(bytes);
   const cols=ov.cols, rows=ov.rows, span=cols*rows, nh=wman.hours.length;
   if(bytes.length!==nh*2*span) throw new Error(`wind tile is ${bytes.length} B, expected ${nh*2*span}`);
@@ -1927,7 +1928,7 @@ async function loadSteepOnce(){
   t.hourOf=h=>h;                        // decode depends on BOTH datasets; cache on the master hour
   // Per steepness cell precompute: its index into the current overview water array (curCell) and its
   // nearest wind-grid linear index (windCell). Cheap per-hour decode then just reads + runs steepCell.
-  const wc=windTile.man.regions.overview, wCols=wc.cols, wRows=wc.rows;
+  const wc=windTile.man.regions[WIND_OV_KEY], wCols=wc.cols, wRows=wc.rows;
   const [wW,wS,wE,wN]=wc.bbox, wStepLon=(wE-wW)/(wCols-1), wStepLat=(wN-wS)/(wRows-1);
   const curCell=new Int32Array(ne), windCell=new Int32Array(ne);
   // Build the quad geometry directly over the selected cells (row/col from the current grid index).
@@ -2749,7 +2750,7 @@ async function boot(){
     const dropWind=()=>{ windDisabled=true;
                          for(const v of ["wind","steep"]) $("mode").querySelector(`option[value="${v}"]`).disabled=true;
                          if(mode==="wind"||mode==="steep"){ mode="current"; applyMode(); } };
-    if(!wm || !wm.regions.overview) dropWind();
+    if(!wm || !wm.regions[WIND_OV_KEY]) dropWind();
     TIMES=inter(mm.hours, fm.hours);
     if(!windDisabled){
       const both=inter(TIMES, wm.hours.map(isoToMs));
