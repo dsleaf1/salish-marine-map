@@ -1559,7 +1559,7 @@ async function saveOffline(){
       const wire=await dlProgress(R2+"/hrdps/"+WIND_OV_KEY+".bin","wind overview");
       await ocPut("bin/wind",wire); await ocPut("man/hrdps.json",JSON.stringify(wm),"application/json");
     }
-    ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run,windRegion:WIND_OV_KEY};
+    ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run,windSpan:(wm.regions[WIND_OV_KEY]?wm.regions[WIND_OV_KEY].cols*wm.regions[WIND_OV_KEY].rows:0)};
     // Per-region currents pack for wherever the map is looking (add more by navigating + saving again).
     const rk=curRegionKey();
     if(rk){
@@ -1604,7 +1604,7 @@ async function refreshNow(){   // manifests first (~5 KB); re-download only pack
       if(ix.base.runWind!==wm.run || !await haveCached("bin/wind")){
         const wire=await dlProgress(R2+"/hrdps/"+WIND_OV_KEY+".bin","wind overview");
         await ocPut("bin/wind",wire); await ocPut("man/hrdps.json",JSON.stringify(wm),"application/json"); changed=true; }
-      ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run,windRegion:WIND_OV_KEY};
+      ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run,windSpan:(wm.regions[WIND_OV_KEY]?wm.regions[WIND_OV_KEY].cols*wm.regions[WIND_OV_KEY].rows:0)};
     }
     for(const rk of Object.keys(ix.regions||{})){       // ALL saved regions move to the new run together
       if(ix.regions[rk].run!==mm.run || !await haveCached("region/"+rk+".bin")){
@@ -1841,7 +1841,7 @@ async function loadWindOnce(){
   // Same live-first / saved-fallback / write-through shape as loadOverviewOnce (offline step 4).
   let bytes=null, wman=windMan, src="live";
   const ix=lsIndex();
-  if(manSrc.wm==="live" && ix.base && ix.base.windRegion===WIND_OV_KEY && windMan && ix.base.runWind===windMan.run)
+  if(manSrc.wm==="live" && ix.base && windMan && windMan.regions[WIND_OV_KEY] && ix.base.windSpan===windMan.regions[WIND_OV_KEY].cols*windMan.regions[WIND_OV_KEY].rows && ix.base.runWind===windMan.run)
     bytes=await ocGetBytes("bin/wind");                        // saved copy IS the latest run
   // Live-manifest guard: same coherence rule as loadOverviewOnce.
   if(!bytes && isOnline() && manSrc.wm==="live"){
@@ -1851,7 +1851,7 @@ async function loadWindOnce(){
       bytes=wire;
       if(ix.base) ocPut("bin/wind",wire)                       // write-through (wire body, pre-gunzip)
         .then(()=>ocPut("man/hrdps.json",JSON.stringify(windMan),"application/json"))
-        .then(()=>{ const x=lsIndex(); if(x.base){ x.base.runWind=windMan.run; x.base.windRegion=WIND_OV_KEY; lsIndexSet(x); refreshOfflineUI(); } })
+        .then(()=>{ const x=lsIndex(); if(x.base){ x.base.runWind=windMan.run; x.base.windSpan=windMan.regions[WIND_OV_KEY].cols*windMan.regions[WIND_OV_KEY].rows; lsIndexSet(x); refreshOfflineUI(); } })
         .catch(()=>{});
     }catch(_){ bytes=null; }
   }
