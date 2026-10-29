@@ -1559,7 +1559,7 @@ async function saveOffline(){
       const wire=await dlProgress(R2+"/hrdps/"+WIND_OV_KEY+".bin","wind overview");
       await ocPut("bin/wind",wire); await ocPut("man/hrdps.json",JSON.stringify(wm),"application/json");
     }
-    ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run};
+    ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run,windRegion:WIND_OV_KEY};
     // Per-region currents pack for wherever the map is looking (add more by navigating + saving again).
     const rk=curRegionKey();
     if(rk){
@@ -1604,7 +1604,7 @@ async function refreshNow(){   // manifests first (~5 KB); re-download only pack
       if(ix.base.runWind!==wm.run || !await haveCached("bin/wind")){
         const wire=await dlProgress(R2+"/hrdps/"+WIND_OV_KEY+".bin","wind overview");
         await ocPut("bin/wind",wire); await ocPut("man/hrdps.json",JSON.stringify(wm),"application/json"); changed=true; }
-      ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run};
+      ix.base={savedAt:Date.now(),runCur:fm.run,runWind:wm.run,windRegion:WIND_OV_KEY};
     }
     for(const rk of Object.keys(ix.regions||{})){       // ALL saved regions move to the new run together
       if(ix.regions[rk].run!==mm.run || !await haveCached("region/"+rk+".bin")){
@@ -1841,7 +1841,7 @@ async function loadWindOnce(){
   // Same live-first / saved-fallback / write-through shape as loadOverviewOnce (offline step 4).
   let bytes=null, wman=windMan, src="live";
   const ix=lsIndex();
-  if(manSrc.wm==="live" && ix.base && windMan && ix.base.runWind===windMan.run)
+  if(manSrc.wm==="live" && ix.base && ix.base.windRegion===WIND_OV_KEY && windMan && ix.base.runWind===windMan.run)
     bytes=await ocGetBytes("bin/wind");                        // saved copy IS the latest run
   // Live-manifest guard: same coherence rule as loadOverviewOnce.
   if(!bytes && isOnline() && manSrc.wm==="live"){
@@ -1851,7 +1851,7 @@ async function loadWindOnce(){
       bytes=wire;
       if(ix.base) ocPut("bin/wind",wire)                       // write-through (wire body, pre-gunzip)
         .then(()=>ocPut("man/hrdps.json",JSON.stringify(windMan),"application/json"))
-        .then(()=>{ const x=lsIndex(); if(x.base){ x.base.runWind=windMan.run; lsIndexSet(x); refreshOfflineUI(); } })
+        .then(()=>{ const x=lsIndex(); if(x.base){ x.base.runWind=windMan.run; x.base.windRegion=WIND_OV_KEY; lsIndexSet(x); refreshOfflineUI(); } })
         .catch(()=>{});
     }catch(_){ bytes=null; }
   }
@@ -2467,10 +2467,10 @@ const NOTES={
      David approved this wording 2026-08-12c (draft B) and approved the plume box
      [W -123.33, S 49.00, E -123.10, N 49.25], but the two-source current read itself is
      still unimplemented — today every steepness cell is fed the coarse overview.
-     ⛔ DO NOT DEPLOY unified_map.html until the box ships, or the panel claims something
-     the map does not do. Scope of the 2026-08-12c edit was LOCAL ONLY, deliberately:
+     ⛔ the two-source wording was removed from the note on 2026-10-29; it now describes only
+     the coarse-overview behaviour that actually ships. Scope of the 2026-08-12c edit was LOCAL ONLY, deliberately:
      nothing copied to salish, no sw.js CACHE_VERSION bump, nothing pushed. */
-  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. Three displays, switched with <b>Sea State</b>: <b>Wave Steepness</b> draws the full HRDPS wind field with a ring + cyan current arrow wherever the current is steepening the sea, from <b>Medium</b> upward — there is no Low ring, so unringed water is <b>unrated, not calm</b>; <b>Quartering (beta)</b> marks the worst heading to be steering, direction only; <b>Wave Height</b> paints the wind-sea height itself in metres, on a continuous scale, with the opposing current's amplification applied — <b>wind sea only, no ocean swell</b>. <b>Where the current comes from:</b> everywhere on this map the current is the model's own fine mesh, which resolves narrow passes best. Over the <b>Fraser River mouth</b> — roughly Point Grey south past Sand Heads to the delta — the map switches to a separate grid read at the <b>very surface</b>. Fresh river water slides over salt there, so the top metre or two can run a couple of knots faster than the water just below, and it is the surface that the waves feel. Everywhere else the two sources agree closely, so the switch makes no visible difference. Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
+  steep:"<b>Probability of increasing roughness</b> from opposing wind/current or quartering seas — a wind-against-current heuristic, <b>not a wave forecast</b>. Three displays, switched with <b>Sea State</b>: <b>Wave Steepness</b> draws the full HRDPS wind field with a ring + cyan current arrow wherever the current is steepening the sea, from <b>Medium</b> upward — there is no Low ring, so unringed water is <b>unrated, not calm</b>; <b>Quartering (beta)</b> marks the worst heading to be steering, direction only; <b>Wave Height</b> paints the wind-sea height itself in metres, on a continuous scale, with the opposing current's amplification applied — <b>wind sea only, no ocean swell</b>. <b>Where the current comes from:</b> the steepness estimate is computed over the model's coarse current overview (the fine mesh is not yet used for this layer). Point at the map for the numbers behind any spot. Shown <b>only in protected waters</b>.",
 };
 // Per-mode hint. The withdrawal notice that used to ride along under every mode was dropped
 // 2026-08-08 when the layer went public again — NOTES.steep is reachable now.
