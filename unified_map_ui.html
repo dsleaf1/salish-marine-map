@@ -254,7 +254,7 @@
   .timewrap{order:6;flex:1 1 60% !important;min-width:0 !important}
   .timewrap .row{min-width:0} #time{min-width:0}
   .timewrap #timeLabel{min-width:0 !important;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .offbar button{flex:1 1 22% !important}
+  .offbar button{flex:1 1 30% !important}
 }</style>
 
 </head>
@@ -347,7 +347,6 @@
     <button id="curAgeBtn" class="curage" type="button" title="Age of the currents model run"><span class="curage-l1">currents run</span><span class="curage-l2" id="curAgeVal">— h ago</span></button>
     <button id="pdfBtn">PDF</button>
     <button id="refreshBtn" title="Refresh" aria-label="Refresh">↻</button>
-    <button id="aboutBtn" type="button">About</button>
   </div>
   <div id="pdfBadge"><span id="pdfCount" class="cnt">0</span> snapshots <button id="pdfSnap">+ Add</button> <button id="pdfDone">Save PDF</button> <button id="pdfCancel" style="background:transparent;color:rgba(255,255,255,.6);border:none;font-size:14px;cursor:pointer;padding:2px 6px">✕</button></div>
   <p class="note" id="note"></p>
@@ -2633,7 +2632,6 @@ $("region").onchange=e=>{ hideTip(); const i=+e.target.value;   // jumping regio
 COMPASS.forEach((name,i)=>{ const o=document.createElement("option");
   o.value=i*22.5; o.textContent=`${name} · ${Math.round(i*22.5)}°`; $("course").appendChild(o); });
 $("mode").onchange=e=>setMode(e.target.value);
-if($("aboutBtn")) $("aboutBtn").onclick=()=>{ const d=$("intro"); if(d){ d.open=!d.open; if(d.open) d.scrollIntoView({behavior:"smooth",block:"nearest"}); } };
 $("steepStyle").onchange=e=>setSteepStyle(e.target.value);
 $("course").onchange=e=>setCourse(+e.target.value);
 $("windArrows").onchange=()=>{ buildLegend(); render(); };   // legend gains the Beaufort key when on
