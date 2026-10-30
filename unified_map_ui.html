@@ -239,6 +239,9 @@
   }
 </style>
 <style>
+.curage{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:4px 6px}
+.curage .curage-l1{font-size:9px;opacity:.7;font-weight:400}
+.curage .curage-l2{font-size:12px;font-weight:700}
 /* UI prototype compaction overrides (phone) */
 @media (max-width:640px){
   #layerFld{flex:1 1 31% !important}
@@ -341,12 +344,10 @@
   <div id="map"></div>
   <p class="status" id="status">Loading…</p>
   <div class="offbar" id="offbar">
-    <span id="stale"></span>
-    <button id="pdfBtn">📄 PDF</button>
-    <button id="saveBtn">⬇ Save</button>
+    <button id="curAgeBtn" class="curage" type="button" title="Age of the currents model run"><span class="curage-l1">currents run</span><span class="curage-l2" id="curAgeVal">— h ago</span></button>
+    <button id="pdfBtn">PDF</button>
     <button id="refreshBtn" title="Refresh" aria-label="Refresh">↻</button>
-    <button id="aboutBtn" type="button">ⓘ About</button>
-    <span class="savedlist" id="savedList"></span>
+    <button id="aboutBtn" type="button">About</button>
   </div>
   <div id="pdfBadge"><span id="pdfCount" class="cnt">0</span> snapshots <button id="pdfSnap">+ Add</button> <button id="pdfDone">Save PDF</button> <button id="pdfCancel" style="background:transparent;color:rgba(255,255,255,.6);border:none;font-size:14px;cursor:pointer;padding:2px 6px">✕</button></div>
   <p class="note" id="note"></p>
@@ -1648,6 +1649,7 @@ async function refreshNow(){   // manifests first (~5 KB); re-download only pack
    of the ~48 h horizon remains: treat as stale). The chip says "saved" when the painted field came
    from the offline store rather than the network. */
 function updateStale(){
+  { const cv=$("curAgeVal"); if(cv) cv.textContent = RUN_CUR ? Math.round((Date.now()-new Date(RUN_CUR).getTime())/3.6e6)+" h ago" : "— h ago"; }
   const el=$("stale"); if(!el) return;
   const chip=(lbl,run,src,aH,rH)=>{ const ageH=(Date.now()-new Date(run).getTime())/3.6e6;
     const cls=ageH>rH?"red":ageH>aH?"amber":"ok";
@@ -2665,7 +2667,7 @@ $("playBtn").onclick=()=>{ if(anim){clearInterval(anim);anim=null;$("playBtn").t
 const stepHour=d=>{ if(anim){clearInterval(anim);anim=null;$("playBtn").textContent="▶";} setHour(hour+d); };
 $("stepBack").onclick=()=>stepHour(-1);
 $("stepFwd").onclick=()=>stepHour(1);
-$("saveBtn").onclick=saveOffline; $("refreshBtn").onclick=refreshNow;
+$("refreshBtn").onclick=refreshNow;
 refreshOfflineUI();
 
 // Adopt ?mode= before the first base map / GL uniforms / tile pass, so a wind bookmark never pays
