@@ -238,6 +238,20 @@
     #legendBtn.open{position:fixed;right:16px;bottom:16px;z-index:1102}
   }
 </style>
+<style>
+/* UI prototype compaction overrides (phone) */
+@media (max-width:640px){
+  #layerFld{flex:1 1 46% !important}
+  #arrowTopFld{flex:1 1 46% !important}
+  #arrowTopFld #arrowsTgl{width:100%;min-height:44px;margin-top:2px}
+  #opFld{order:5;flex:1 1 46% !important}
+  .timewrap{order:6;flex:1 1 50% !important;min-width:0 !important}
+  .timewrap .row{min-width:0} #time{min-width:0}
+  .timewrap #timeLabel{min-width:0 !important;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #cvdFld{order:10}
+  .offbar button{flex:1 1 28% !important}
+}</style>
+
 </head>
 <body>
 <!-- Blue→black transform for the BASE tiles (2026-08-06). We can't touch the USGS palette — the tiles
@@ -281,12 +295,13 @@
 </header>
 <main>
   <div class="bar">
-    <div class="fld"><label for="mode">Layer</label>
+    <div class="fld" id="layerFld"><label for="mode">Layer</label>
       <select id="mode">
         <option value="current" selected>Currents (SSCOFS)</option>
         <option value="wind">Wind (HRDPS 2.5 km)</option>
         <option value="steep">Waves</option>   <!-- renamed from "Roughness (wind vs current)" 2026-08-07 (David); phone label below matches -->
       </select></div>
+    <div class="fld" id="arrowTopFld"><label>Arrows</label><button id="arrowsTgl" type="button" aria-pressed="true">➤ On</button></div>
     <!-- Renamed 2026-08-07 (David): "Steep display" → Sea State, "Rings on wind" → Wave Steepness,
          "On your course" → Quartering (beta). The `value=`s are UNCHANGED on purpose — they are the
          ?st= link values, so every shared/bookmarked steep link keeps working. "Shaded cells"
@@ -315,7 +330,6 @@
         <button id="opDown" type="button" title="Less fill opacity" aria-label="Less fill opacity">−</button>
         <input type="range" id="opacity" min="0" max="1" step="0.01" title="Opacity of the coloured fill; the legend swatches follow it">
         <button id="opUp" type="button" title="More fill opacity" aria-label="More fill opacity">+</button>
-        <button id="arrowsTgl" type="button" aria-pressed="true">➤ On</button>
       </div></div>
     <div class="timewrap"><label for="time" id="timeCap">Forecast timeline</label>
       <div class="row"><button id="playBtn">▶</button><button id="stepBack" title="Back one hour">◀</button><button id="stepFwd" title="Forward one hour">▶</button><input type="range" id="time" min="0" max="48" value="0"><span id="timeLabel"></span></div>
@@ -329,7 +343,6 @@
     <button id="pdfBtn">📄 PDF</button>
     <button id="saveBtn">⬇ Save</button>
     <button id="refreshBtn">↻ Refresh</button>
-    <button id="aboutBtn" type="button">ⓘ About</button>
     <span class="savedlist" id="savedList"></span>
   </div>
   <div id="pdfBadge"><span id="pdfCount" class="cnt">0</span> snapshots <button id="pdfSnap">+ Add</button> <button id="pdfDone">Save PDF</button> <button id="pdfCancel" style="background:transparent;color:rgba(255,255,255,.6);border:none;font-size:14px;cursor:pointer;padding:2px 6px">✕</button></div>
@@ -2285,11 +2298,11 @@ function setStatus(m,err){ const e=$("status"); e.textContent=m; e.className="st
 // Beaufort colour chips at a given fill alpha — force number + wind range only, no descriptor, to keep the Key compact.
 function beaufortKey(alpha){
   let s="";
-  for(let f=0;f<=9;f++){
+  for(let f=1;f<=7;f++){
     const ktl = f===0 ? "calm" : `${kt(W_EDGES[f-1])}${f<W_EDGES.length?"–"+kt(W_EDGES[f]-1):"+"} kt`;
     s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[f],GRAY_LAND,alpha)}"></i>F${f} · ${ktl}</span>`;
   }
-  s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[10],GRAY_LAND,alpha)}"></i>F10+</span>`;
+  s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[8],GRAY_LAND,alpha)}"></i>F8+ · 33+ kt</span>`;
   return s;
 }
 /* Wrap the explanatory paragraphs of a Key into a click-to-open disclosure, closed by default —
@@ -2314,7 +2327,7 @@ function buildLegend(){
       const lbl = f===0 ? CUR_LBL[f]+" <span style='opacity:.6'>(unshaded)</span>" : CUR_LBL[f];
       s+=`<span class="lchip"><i class="lsw" style="background:${sw}"></i>${lbl}</span>`; }
   } else if(mode==="wind"){
-    s=`<span class="lchip" style="font-weight:600"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(md.alpha);
+    s=`<span class="lchip" style="font-weight:600"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Bf)</a>:</span>`+beaufortKey(md.alpha);
   } else if(steepStyle==="rings"){
     // rings drawn as an open circle (coloured border); fill behind = wind (Beaufort)
     /* PHONE TRIM, David 2026-08-07: the phone Key panel was taller than the map it explains. Three
@@ -2348,7 +2361,7 @@ function buildLegend(){
         +` — the layer no longer reports a Low band. Unringed water is unrated here, not flat.</span></span>`;
     // With wind arrows on, decode the fill's wind-speed colours inline (Beaufort key at the fill alpha)
     if($("windArrows").checked)
-      s+=`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(getAlpha());
+      s+=`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Bf)</a>:</span>`+beaufortKey(getAlpha());
     else
       s+=`<span class="lchip" style="opacity:.6">coloured fill = wind (Beaufort — see Wind layer)</span>`;
   } else if(steepStyle==="height"){
@@ -2438,7 +2451,7 @@ function buildLegend(){
      +`</svg>arrow = worst heading to be steering</span>`
      // The Beaufort chips are KEY, not prose — they decode the fill, so they stay out of the collapse
      // and stay next to the arrow swatch. The disclosure goes last, so both key rows read together.
-     +`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`
+     +`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Bf)</a>:</span>`
      +beaufortKey(getAlpha())
      +legendMore("How to read these arrows · cautions",
         `<span class="lchip" style="opacity:.6">open head, and it grows OUT of the cell — it is a course to steer, not a flow.`
@@ -2615,7 +2628,6 @@ $("region").onchange=e=>{ hideTip(); const i=+e.target.value;   // jumping regio
 COMPASS.forEach((name,i)=>{ const o=document.createElement("option");
   o.value=i*22.5; o.textContent=`${name} · ${Math.round(i*22.5)}°`; $("course").appendChild(o); });
 $("mode").onchange=e=>setMode(e.target.value);
-if($("aboutBtn")) $("aboutBtn").onclick=()=>{ const d=$("intro"); if(d){ d.open=!d.open; if(d.open) d.scrollIntoView({behavior:"smooth",block:"nearest"}); } };
 $("steepStyle").onchange=e=>setSteepStyle(e.target.value);
 $("course").onchange=e=>setCourse(+e.target.value);
 $("windArrows").onchange=()=>{ buildLegend(); render(); };   // legend gains the Beaufort key when on
@@ -2993,7 +3005,7 @@ function pdfDrawLegend(pdf, snap, x, y, maxW) {
   }
 
   function beaufortRow(alpha) {
-    title("Wind (Beaufort):");
+    title("Wind (Bf):");
     for (let f = 0; f <= 9; f++) {
       const rgb = pdfBlend(W_COL[f], GRAY_LAND, alpha);
       const lbl = f === 0 ? "F0 calm" : "F" + f + " " + kt(W_EDGES[f-1]) + (f < W_EDGES.length ? "–" + kt(W_EDGES[f]-1) : "+") + " kt";
