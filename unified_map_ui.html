@@ -312,7 +312,7 @@
          ?st= link values, so every shared/bookmarked steep link keeps working. "Shaded cells"
          (value="fill") was REMOVED in the same pass; ?st=fill now falls back to rings. -->
     <div class="fld" id="steepStyleFld" style="display:none"><label for="steepStyle">Sea State</label>
-      <select id="steepStyle"><option value="rings" selected>Wave Steepness</option><option value="course">Quartering (beta)</option><option value="height">Wave Height</option></select></div>
+      <select id="steepStyle"><option value="rings" selected>Wave Steepness</option><option value="height">Wave Height</option></select></div>
     <div class="fld" id="courseFld" style="display:none"><label for="course">Course (steer)</label>
       <div class="courseRow">
         <select id="course" title="Heading used by the tap readout and the rose. The map's ticks show each cell's worst heading, whatever you steer."></select>
@@ -651,7 +651,7 @@ function applyCvdPalette(on){
 // paints; it drives the tap readout and the rose's arm.
 // Phone: the Sea State menu is hidden (media block, more map room) and Quartering (beta) is the
 // permanent default there — desktop keeps Wave Steepness and the menu to switch.
-let steepStyle=matchMedia("(max-width:640px)").matches ? "course" : "rings";
+let steepStyle="rings";   // Quartering hidden from public 2026-10-30; default Wave Steepness
 let course=225;                 // paddler heading (course steered), degrees; only used by the "course" display
 // "rings" AND "course" both paint the WIND field (its ramp) with their own overlay on top — rings and
 // current arrows for one, Q ticks for the other. (The removed "fill" display painted the band ramp
@@ -2677,7 +2677,7 @@ if(!STEEP_ON) $("mode").querySelector('option[value="steep"]').disabled=true;
   if(m && MODES[m] && !(m==="steep"&&!STEEP_ON)) mode=m;
   // ?st= before applyMode/alphaRef. "fill" (Shaded cells) was removed 2026-08-07 but is still honoured
   // as an alias for "rings" so links shared before then land on a display that exists.
-  const st=q.get("st"); if(st==="rings"||st==="fill") steepStyle="rings"; else if(st==="course") steepStyle="course";
+  const st=q.get("st"); if(st==="rings"||st==="fill") steepStyle="rings"; else if(st==="course") steepStyle="rings";   // Quartering hidden: old links -> Wave Steepness
   else if(st==="height") steepStyle="height";     // Wave Height (2026-08-07)
   const co=parseFloat(q.get("course")); if(isFinite(co)) course=((co%360)+360)%360;
   $("mode").value=mode;
