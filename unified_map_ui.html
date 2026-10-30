@@ -2719,8 +2719,8 @@ const headerDesc=document.querySelector("header details")||document.querySelecto
 let mobileApplied=null;                                 // guard: only touch the DOM on a real crossing
 window.mobileLayout=function(){
   const on=mobileMQ.matches; if(on===mobileApplied) return; mobileApplied=on;
-  if(on){ headerDesc.style.display="none"; $("map").append($("legend"),legendBtn); }
-  else { headerDesc.style.display=""; $("map").before($("legend")); legendBtn.remove(); }
+  if(on){ if(headerDesc) headerDesc.style.display="none"; $("map").append($("legend"),legendBtn); }
+  else { if(headerDesc) headerDesc.style.display=""; $("map").before($("legend")); legendBtn.remove(); }
   map.invalidateSize({animate:false});
 };
 mobileLayout();
