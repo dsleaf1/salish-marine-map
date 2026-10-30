@@ -382,6 +382,7 @@ const REGIONS=[
 const WIND_OV_KEY="whole-coast";   // whole-coast wind overview, Puget Sound -> Sitka (58N)
 const MESH_ZOOM=10;                         // >= this: native mesh tiles; below: whole-coast overview
 const FULL_EXTENT=[[46.9,-137.0],[58.0,-122.0]];
+const DEFAULT_VIEW={lat:49.2,lon:-124.2,z:8};   // open in the Salish Sea, not fit to the whole coast (fast first render; pan/zoom out for the rest)
 const DRY=-1000;                            // sentinel written into the GL speed buffer; always discarded
 
 // ---- Currents: kt bins (byte/10), arrows point the way the water goes (TOWARD) ----
@@ -673,7 +674,8 @@ const URL_VIEW=(()=>{ const q=new URLSearchParams(location.search);
 // applyURL() (that race WAS the cold-load restore miss), so the view is re-applied right here and
 // the order stops mattering.
 function fitExtent(){ map.setMinZoom(0); map.invalidateSize(); map.fitBounds(FULL_EXTENT,{animate:false}); map.setMinZoom(map.getZoom());
-  if(URL_VIEW.view){ const v=URL_VIEW.view; map.setView([v.lat,v.lon],Math.max(v.z,map.getMinZoom()),{animate:false}); } }
+  if(URL_VIEW.view){ const v=URL_VIEW.view; map.setView([v.lat,v.lon],Math.max(v.z,map.getMinZoom()),{animate:false}); }
+  else { map.setView([DEFAULT_VIEW.lat,DEFAULT_VIEW.lon],Math.max(DEFAULT_VIEW.z,map.getMinZoom()),{animate:false}); } }
 fitExtent();
 // getMinZoom()<1 = the extent fit itself never took: a URL view restored above can leave zoom≥1
 // while minZoom stayed unlocked at 0, which the two original checks alone would wrongly pass.
