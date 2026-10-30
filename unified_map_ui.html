@@ -241,14 +241,16 @@
 <style>
 /* UI prototype compaction overrides (phone) */
 @media (max-width:640px){
-  #layerFld{flex:1 1 46% !important}
-  #arrowTopFld{flex:1 1 46% !important}
+  #layerFld{flex:1 1 31% !important}
+  #arrowTopFld{flex:1 1 31% !important}
   #arrowTopFld #arrowsTgl{width:100%;min-height:44px;margin-top:2px}
-  #opFld{order:5;flex:1 1 46% !important}
-  .timewrap{order:6;flex:1 1 50% !important;min-width:0 !important}
+  #cvdFld{order:0;flex:1 1 31% !important;align-self:flex-start}
+  #cvdFld label{font-size:11px;line-height:1.1}
+  #opFld{order:5;flex:0 1 auto !important}
+  #opacity{display:none !important}
+  .timewrap{order:6;flex:1 1 60% !important;min-width:0 !important}
   .timewrap .row{min-width:0} #time{min-width:0}
   .timewrap #timeLabel{min-width:0 !important;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #cvdFld{order:10}
   .offbar button{flex:1 1 28% !important}
 }</style>
 
@@ -323,7 +325,7 @@
       <input type="checkbox" id="windArrows"><label for="windArrows">Wind arrows</label></div>
     <div class="fld chk" id="cvdFld">
       <input type="checkbox" id="cvdPalette" checked><label for="cvdPalette">Colour-blind palette</label></div>
-    <div class="fld" id="opFld"><label for="opacity">Fill opacity <span id="opacityVal"></span></label>
+    <div class="fld" id="opFld"><label for="opacity">Opacity <span id="opacityVal"></span></label>
       <!-- step 0.01: both mode defaults (0.72, 0.85) must be exactly representable or the thumb
            snaps to a neighbouring step and jumps on the first drag -->
       <div class="oprow">
@@ -1550,7 +1552,7 @@ function adoptAxis(hoursMs){
   if(!t2.length){ setStatus("Saved packs share no forecast hours — connect and re-save together.",true); return false; }
   if(t2.length!==TIMES.length || t2[0]!==TIMES[0]){
     TIMES=t2; $("time").max=TIMES.length-1;
-    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h, both models)`;
+    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h)`;
     for(const t of [overview,windTile,steepTile,...Object.values(tiles)]) if(t) t.decodedHour=-1;
     setHour(Math.min(hour,TIMES.length-1));
   }
@@ -2777,7 +2779,7 @@ async function boot(){
     }
     if(!TIMES.length) throw new Error("SSCOFS mesh and field manifests share no forecast hours");
     $("time").max=TIMES.length-1;
-    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h, both models)`;
+    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h)`;
     const h=applyURL();
     setHour(isFinite(h)?h:0);
     refreshOfflineUI();
