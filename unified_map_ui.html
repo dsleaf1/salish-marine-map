@@ -344,7 +344,7 @@
     <span id="stale"></span>
     <button id="pdfBtn">📄 PDF</button>
     <button id="saveBtn">⬇ Save</button>
-    <button id="refreshBtn">↻ Refresh</button>
+    <button id="refreshBtn" title="Refresh" aria-label="Refresh">↻</button>
     <button id="aboutBtn" type="button">ⓘ About</button>
     <span class="savedlist" id="savedList"></span>
   </div>
@@ -1636,10 +1636,10 @@ async function refreshNow(){   // manifests first (~5 KB); re-download only pack
     lsIndexSet(ix); evictionNote=null;
     if(changed) location.reload();                       // re-boot on the fresh packs (URL keeps the view)
     else { setStatus("Up to date — every saved pack is on the latest run.");
-           b.disabled=false; b.textContent="↻ Refresh"; refreshOfflineUI(); updateStale(); }
+           b.disabled=false; b.textContent="↻"; refreshOfflineUI(); updateStale(); }
   }catch(e){
     setStatus(isOnline()?"Refresh failed ("+e.message+") — keeping the saved data.":"No connection — keeping the saved data.",true);
-    b.disabled=false; b.textContent="↻ Refresh";
+    b.disabled=false; b.textContent="↻";
   }
 }
 /* Two-clock freshness banner (persistent, re-aged every 60 s): HRDPS runs 4×/day, so the wind clock
