@@ -80,7 +80,7 @@
   .timewrap{display:flex;flex-direction:column;gap:4px;flex:1 1 320px;min-width:260px}
   .timewrap .row{display:flex;align-items:center;gap:8px} #time{flex:1} #timeLabel{font-weight:700;font-size:13px;min-width:150px}
   #stepBack,#stepFwd{display:none}   /* hour-step buttons are the phone's timeline control; desktop keeps ▶ play */
-  #map{height:640px;border:1px solid var(--line);border-radius:12px;position:relative}
+  #map{height:760px;border:1px solid var(--line);border-radius:12px;position:relative}
   /* stacking is owned by the "fields" pane (z 450); within it, DOM order puts arrows over the fill */
   .ovl{position:absolute;top:0;left:0;pointer-events:none}
   /* base-tile filters — scoped to the base layer's own container (className:"baseTiles" in
@@ -135,6 +135,7 @@
      row under the status line on desktop; the phone media block below grows the buttons to
      wet-finger size. Chip colours = run-age bands (see updateStale for the thresholds). */
   .offbar{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-top:8px;font-size:12px}
+  .offbar button{white-space:nowrap}
   .offbar button{font-size:12px;padding:6px 10px}
   .offbar .savedlist{color:var(--muted)}
   /* PDF capture mode */
@@ -237,6 +238,25 @@
     #legendBtn.open{position:fixed;right:16px;bottom:16px;z-index:1102}
   }
 </style>
+<style>
+.curage{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:4px 6px}
+.curage .curage-l1{font-size:9px;opacity:.7;font-weight:400}
+.curage .curage-l2{font-size:12px;font-weight:700}
+/* UI prototype compaction overrides (phone) */
+@media (max-width:640px){
+  #layerFld{flex:1 1 31% !important}
+  #arrowTopFld{flex:1 1 31% !important}
+  #arrowTopFld #arrowsTgl{width:100%;min-height:44px;margin-top:2px}
+  #cvdFld{order:0;flex:1 1 31% !important;align-self:flex-start}
+  #cvdFld label{font-size:11px;line-height:1.1}
+  #opFld{order:5;flex:0 1 auto !important}
+  #opacity{display:none !important}
+  .timewrap{order:6;flex:1 1 60% !important;min-width:0 !important}
+  .timewrap .row{min-width:0} #time{min-width:0}
+  .timewrap #timeLabel{min-width:0 !important;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .offbar button{flex:1 1 30% !important}
+}</style>
+
 </head>
 <body>
 <!-- Blue→black transform for the BASE tiles (2026-08-06). We can't touch the USGS palette — the tiles
@@ -275,19 +295,18 @@
   </filter>
 </svg>
 <header>
-  <h1>HRDPS Wind and SSCOFS Current Maps</h1>
-  <details id="intro"><summary>About this map · what’s new &nbsp;·&nbsp; <a href="user_manual.html" style="color:#7fc5e8;font-weight:600" onclick="event.stopPropagation()">📖 User manual</a></summary>
-  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b>. <span style="opacity:.7">build 2026-08-09a (the <b>Wave Height</b> display is easier to read at the rough end: above about 1.5 m its colours now run <b>indigo &rarr; magenta</b> instead of three near-identical greys, so a gale separates from a stiff blow at a glance. The trade, taken deliberately, is that calm water under 0.5 m separates a little <i>less</i> than before &mdash; a faint wash on benign water is the intended reading. Its <b>key</b> is now a true <b>0&ndash;3 m scale</b> with evenly spaced marks, so the colours bunch to the left where the heights actually are. The <b>Key</b> panel's explanatory prose is <b>collapsed</b> behind a click-to-open line &mdash; everything that decodes a mark (the colour bar, the arrow swatches, the Beaufort strip) stays visible, and the map now starts higher up the page. The readout waits <b>0.3 s</b> before it opens on hover, and once open refreshes at most <b>ten times a second</b> rather than tracking every mouse movement; 2026-08-08c: the <b>Waves</b> layer is <b>public again</b> after its 2026-08-04 withdrawal — the under-read that caused it has been corrected and re-checked against WaveWatch III. Three displays under <b>Sea State</b>: <b>Wave Steepness</b> — rings from <b>Medium</b> up, so water with no ring is <b>unrated, not calm</b>; <b>Wave Height</b> (new) — the wind-sea height in <b>metres</b>, continuous, and <b>wind sea only, no ocean swell</b>; <b>Quartering (beta)</b> — the worst heading to be steering, <b>direction only and uncalibrated</b>. Still a wind-against-current <b>heuristic</b>, not a wave forecast; 2026-08-08a: the wave model was <b>refitted</b> against WaveWatch III. It read heights about <b>1.5&times; too high</b> and now reads within about 5%, so good paddling windows it wrongly condemned drop from about <b>42% to 22%</b>; 2026-08-07a: base legibility under the wind fill — one base map now, <b>USGS topo</b>, in every layer. Its water is darkened by a colour transform applied to the base tiles themselves, so land and water separate by <i>tone</i> and the coastline reads as the boundary between them even under a 70% fill; a light contrast + saturation lift keeps terrain and place names readable. The base-map selector and the alternative bases have been removed. This description is now <b>collapsed by default</b> — open it with <b>About this map</b> above. The desktop gains the <b>➤ On/Off</b> button beside Fill opacity that hides the arrows without losing the arrow density you were on (the phone has had it since 2026-07-22i). In the Roughness layer the display selector is now <b>Sea State</b> and its displays are <b>Wave Steepness</b> (was "Rings on wind") and <b>Quartering (beta)</b> (was "On your course"); the <b>Shaded cells</b> display has been removed. The <b>Low</b> call is gone from that layer: rings now start at <b>Medium</b>, and Medium draws <b>grey</b> rather than amber, so only High (orange) and Very high (magenta) read as warnings — water with no ring is <b>unrated, not calm</b>. The optional wind arrows over that display are now <b>black on a white casing</b> (they were white on a dark one). The bands themselves are unchanged: this is what the layer reports, not how it is computed; 2026-08-04a: the wind-against-current <b>Roughness</b> layer was <b>temporarily withdrawn</b> (restored 2026-08-08c): compared band for band against WaveWatch III, a peer-reviewed wave model, it read a band <i>low</i> in the seas that matter most — where WW3 called the water "High" the roughness layer painted "Medium" about three quarters of the time, and where WW3 called it "Low" it painted "Medium". It stayed off until that was corrected and re-verified against WW3; the wind and current layers were unaffected and unchanged; 2026-07-23a: Currents: zoomed in past z10, the whole-coast overview now draws <i>alongside</i> the native mesh instead of being switched off by it — a mesh region whose bbox merely clips the corner of your view no longer blanks the modelled water everywhere else on screen (WCVI, Clayoquot to Barkley, was losing a full screen of currents to an 800 m pan), and the tap readout comes back with it; 2026-07-22l: Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → the quartering display now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
-  </details>
+  <h1>NW Coast Wind and Current</h1>
+
 </header>
 <main>
   <div class="bar">
-    <div class="fld"><label for="mode">Layer</label>
+    <div class="fld" id="layerFld"><label for="mode">Layer</label>
       <select id="mode">
         <option value="current" selected>Currents (SSCOFS)</option>
         <option value="wind">Wind (HRDPS 2.5 km)</option>
         <option value="steep">Waves</option>   <!-- renamed from "Roughness (wind vs current)" 2026-08-07 (David); phone label below matches -->
       </select></div>
+    <div class="fld" id="arrowTopFld"><label>Arrows</label><button id="arrowsTgl" type="button" aria-pressed="true">➤ On</button></div>
     <!-- Renamed 2026-08-07 (David): "Steep display" → Sea State, "Rings on wind" → Wave Steepness,
          "On your course" → Quartering (beta). The `value=`s are UNCHANGED on purpose — they are the
          ?st= link values, so every shared/bookmarked steep link keeps working. "Shaded cells"
@@ -308,15 +327,14 @@
     <div class="fld chk" id="windArrowsFld" style="display:none">
       <input type="checkbox" id="windArrows"><label for="windArrows">Wind arrows</label></div>
     <div class="fld chk" id="cvdFld">
-      <input type="checkbox" id="cvdPalette" checked><label for="cvdPalette">Colour-blind palette</label></div>
-    <div class="fld" id="opFld"><label for="opacity">Fill opacity <span id="opacityVal"></span></label>
+      <input type="checkbox" id="cvdPalette" checked><label for="cvdPalette">Color-blind</label></div>
+    <div class="fld" id="opFld"><label for="opacity">Opacity <span id="opacityVal"></span></label>
       <!-- step 0.01: both mode defaults (0.72, 0.85) must be exactly representable or the thumb
            snaps to a neighbouring step and jumps on the first drag -->
       <div class="oprow">
         <button id="opDown" type="button" title="Less fill opacity" aria-label="Less fill opacity">−</button>
         <input type="range" id="opacity" min="0" max="1" step="0.01" title="Opacity of the coloured fill; the legend swatches follow it">
         <button id="opUp" type="button" title="More fill opacity" aria-label="More fill opacity">+</button>
-        <button id="arrowsTgl" type="button" aria-pressed="true">➤ On</button>
       </div></div>
     <div class="timewrap"><label for="time" id="timeCap">Forecast timeline</label>
       <div class="row"><button id="playBtn">▶</button><button id="stepBack" title="Back one hour">◀</button><button id="stepFwd" title="Forward one hour">▶</button><input type="range" id="time" min="0" max="48" value="0"><span id="timeLabel"></span></div>
@@ -326,14 +344,15 @@
   <div id="map"></div>
   <p class="status" id="status">Loading…</p>
   <div class="offbar" id="offbar">
-    <span id="stale"></span>
-    <button id="pdfBtn">📄 Capture PDF</button>
-    <button id="saveBtn">⬇ Save offline</button>
-    <button id="refreshBtn">↻ Refresh</button>
-    <span class="savedlist" id="savedList"></span>
+    <button id="curAgeBtn" class="curage" type="button" title="Age of the currents model run"><span class="curage-l1">currents run</span><span class="curage-l2" id="curAgeVal">— h ago</span></button>
+    <button id="pdfBtn">PDF</button>
+    <button id="refreshBtn" title="Refresh" aria-label="Refresh">↻</button>
   </div>
   <div id="pdfBadge"><span id="pdfCount" class="cnt">0</span> snapshots <button id="pdfSnap">+ Add</button> <button id="pdfDone">Save PDF</button> <button id="pdfCancel" style="background:transparent;color:rgba(255,255,255,.6);border:none;font-size:14px;cursor:pointer;padding:2px 6px">✕</button></div>
   <p class="note" id="note"></p>
+  <details id="intro"><summary>About this map · what’s new &nbsp;·&nbsp; <a href="user_manual.html" style="color:#7fc5e8;font-weight:600" onclick="event.stopPropagation()">📖 User manual</a></summary>
+  <p>One map, Queen Charlotte Sound → Puget Sound. Navigate to where you paddle, then flip layer at the <b>same view coordinates</b>: SSCOFS <b>currents</b> (native FVCOM mesh) → HRDPS 2.5 km <b>wind</b>. <span style="opacity:.7">build 2026-08-09a (the <b>Wave Height</b> display is easier to read at the rough end: above about 1.5 m its colours now run <b>indigo &rarr; magenta</b> instead of three near-identical greys, so a gale separates from a stiff blow at a glance. The trade, taken deliberately, is that calm water under 0.5 m separates a little <i>less</i> than before &mdash; a faint wash on benign water is the intended reading. Its <b>key</b> is now a true <b>0&ndash;3 m scale</b> with evenly spaced marks, so the colours bunch to the left where the heights actually are. The <b>Key</b> panel's explanatory prose is <b>collapsed</b> behind a click-to-open line &mdash; everything that decodes a mark (the colour bar, the arrow swatches, the Beaufort strip) stays visible, and the map now starts higher up the page. The readout waits <b>0.3 s</b> before it opens on hover, and once open refreshes at most <b>ten times a second</b> rather than tracking every mouse movement; 2026-08-08c: the <b>Waves</b> layer is <b>public again</b> after its 2026-08-04 withdrawal — the under-read that caused it has been corrected and re-checked against WaveWatch III. Three displays under <b>Sea State</b>: <b>Wave Steepness</b> — rings from <b>Medium</b> up, so water with no ring is <b>unrated, not calm</b>; <b>Wave Height</b> (new) — the wind-sea height in <b>metres</b>, continuous, and <b>wind sea only, no ocean swell</b>; <b>Quartering (beta)</b> — the worst heading to be steering, <b>direction only and uncalibrated</b>. Still a wind-against-current <b>heuristic</b>, not a wave forecast; 2026-08-08a: the wave model was <b>refitted</b> against WaveWatch III. It read heights about <b>1.5&times; too high</b> and now reads within about 5%, so good paddling windows it wrongly condemned drop from about <b>42% to 22%</b>; 2026-08-07a: base legibility under the wind fill — one base map now, <b>USGS topo</b>, in every layer. Its water is darkened by a colour transform applied to the base tiles themselves, so land and water separate by <i>tone</i> and the coastline reads as the boundary between them even under a 70% fill; a light contrast + saturation lift keeps terrain and place names readable. The base-map selector and the alternative bases have been removed. This description is now <b>collapsed by default</b> — open it with <b>About this map</b> above. The desktop gains the <b>➤ On/Off</b> button beside Fill opacity that hides the arrows without losing the arrow density you were on (the phone has had it since 2026-07-22i). In the Roughness layer the display selector is now <b>Sea State</b> and its displays are <b>Wave Steepness</b> (was "Rings on wind") and <b>Quartering (beta)</b> (was "On your course"); the <b>Shaded cells</b> display has been removed. The <b>Low</b> call is gone from that layer: rings now start at <b>Medium</b>, and Medium draws <b>grey</b> rather than amber, so only High (orange) and Very high (magenta) read as warnings — water with no ring is <b>unrated, not calm</b>. The optional wind arrows over that display are now <b>black on a white casing</b> (they were white on a dark one). The bands themselves are unchanged: this is what the layer reports, not how it is computed; 2026-08-04a: the wind-against-current <b>Roughness</b> layer was <b>temporarily withdrawn</b> (restored 2026-08-08c): compared band for band against WaveWatch III, a peer-reviewed wave model, it read a band <i>low</i> in the seas that matter most — where WW3 called the water "High" the roughness layer painted "Medium" about three quarters of the time, and where WW3 called it "Low" it painted "Medium". It stayed off until that was corrected and re-verified against WW3; the wind and current layers were unaffected and unchanged; 2026-07-23a: Currents: zoomed in past z10, the whole-coast overview now draws <i>alongside</i> the native mesh instead of being switched off by it — a mesh region whose bbox merely clips the corner of your view no longer blanks the modelled water everywhere else on screen (WCVI, Clayoquot to Barkley, was losing a full screen of currents to an 800 m pan), and the tap readout comes back with it; 2026-07-22l: Wind <b>Key</b> legend condensed — Beaufort force number + wind range only, descriptor dropped to shrink the Key panel; 2026-07-22k: Roughness: tapping exposed water outside the analyzed zones now explains why it isn't scored there — the wind-vs-current estimate doesn't model ocean swell — instead of showing a blank readout that looked "safe"; build 2026-07-22j (Course (steer) select in Roughness → the quartering display now shows a compass arrow beside it, pointing the selected heading, phone + desktop; build 2026-07-22i (phone: Wind arrows checkbox (Roughness/Rings mode) now hidden — redundant with the ➤ On/Off arrows button, desktop keeps it; phone: ➤ On/Off button beside Fill opacity toggles the arrows; Fill opacity now runs 0–100% (0 = fill off, arrows/mesh only); phone: Region selector removed (navigate by pinch-and-pan), double-tap-to-zoom disarmed on the controls; Key panel opens full-width at the bottom of the page, ± buttons flank the Fill opacity slider; uniform arrow lattice at every zoom; timeline ◀ ▶ hour-step buttons replace play, bigger map — Base map fixed, densest arrows, controls trimmed; offline: save base + region packs for airplane-mode use, two-clock staleness banner; shared physics.js)</span></p>
+  </details>
 </main>
 <div id="tip"></div>
 <script src="vendor/leaflet.js"></script>
@@ -379,6 +398,7 @@ const REGIONS=[
 const WIND_OV_KEY="whole-coast";   // whole-coast wind overview, Puget Sound -> Sitka (58N)
 const MESH_ZOOM=10;                         // >= this: native mesh tiles; below: whole-coast overview
 const FULL_EXTENT=[[46.9,-137.0],[58.0,-122.0]];
+const DEFAULT_VIEW={lat:49.2,lon:-124.2,z:8};   // open in the Salish Sea, not fit to the whole coast (fast first render; pan/zoom out for the rest)
 const DRY=-1000;                            // sentinel written into the GL speed buffer; always discarded
 
 // ---- Currents: kt bins (byte/10), arrows point the way the water goes (TOWARD) ----
@@ -670,7 +690,8 @@ const URL_VIEW=(()=>{ const q=new URLSearchParams(location.search);
 // applyURL() (that race WAS the cold-load restore miss), so the view is re-applied right here and
 // the order stops mattering.
 function fitExtent(){ map.setMinZoom(0); map.invalidateSize(); map.fitBounds(FULL_EXTENT,{animate:false}); map.setMinZoom(map.getZoom());
-  if(URL_VIEW.view){ const v=URL_VIEW.view; map.setView([v.lat,v.lon],Math.max(v.z,map.getMinZoom()),{animate:false}); } }
+  if(URL_VIEW.view){ const v=URL_VIEW.view; map.setView([v.lat,v.lon],Math.max(v.z,map.getMinZoom()),{animate:false}); }
+  else { map.setView([DEFAULT_VIEW.lat,DEFAULT_VIEW.lon],Math.max(DEFAULT_VIEW.z,map.getMinZoom()),{animate:false}); } }
 fitExtent();
 // getMinZoom()<1 = the extent fit itself never took: a URL view restored above can leave zoom≥1
 // while minZoom stayed unlocked at 0, which the two original checks alone would wrongly pass.
@@ -1532,7 +1553,7 @@ function adoptAxis(hoursMs){
   if(!t2.length){ setStatus("Saved packs share no forecast hours — connect and re-save together.",true); return false; }
   if(t2.length!==TIMES.length || t2[0]!==TIMES[0]){
     TIMES=t2; $("time").max=TIMES.length-1;
-    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h, both models)`;
+    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h)`;
     for(const t of [overview,windTile,steepTile,...Object.values(tiles)]) if(t) t.decodedHour=-1;
     setHour(Math.min(hour,TIMES.length-1));
   }
@@ -1615,10 +1636,10 @@ async function refreshNow(){   // manifests first (~5 KB); re-download only pack
     lsIndexSet(ix); evictionNote=null;
     if(changed) location.reload();                       // re-boot on the fresh packs (URL keeps the view)
     else { setStatus("Up to date — every saved pack is on the latest run.");
-           b.disabled=false; b.textContent="↻ Refresh"; refreshOfflineUI(); updateStale(); }
+           b.disabled=false; b.textContent="↻"; refreshOfflineUI(); updateStale(); }
   }catch(e){
     setStatus(isOnline()?"Refresh failed ("+e.message+") — keeping the saved data.":"No connection — keeping the saved data.",true);
-    b.disabled=false; b.textContent="↻ Refresh";
+    b.disabled=false; b.textContent="↻";
   }
 }
 /* Two-clock freshness banner (persistent, re-aged every 60 s): HRDPS runs 4×/day, so the wind clock
@@ -1627,6 +1648,7 @@ async function refreshNow(){   // manifests first (~5 KB); re-download only pack
    of the ~48 h horizon remains: treat as stale). The chip says "saved" when the painted field came
    from the offline store rather than the network. */
 function updateStale(){
+  { const cv=$("curAgeVal"); if(cv) cv.textContent = RUN_CUR ? Math.round((Date.now()-new Date(RUN_CUR).getTime())/3.6e6)+" h ago" : "— h ago"; }
   const el=$("stale"); if(!el) return;
   const chip=(lbl,run,src,aH,rH)=>{ const ageH=(Date.now()-new Date(run).getTime())/3.6e6;
     const cls=ageH>rH?"red":ageH>aH?"amber":"ok";
@@ -1644,8 +1666,7 @@ function refreshOfflineUI(){
   const ix=lsIndex(), rk=curRegionKey(), regs=ix.regions||{};
   const savedHere=!!(ix.base && (!rk || regs[rk]));
   s.disabled=savedHere;
-  s.textContent=savedHere ? "✓ Saved for offline"
-    : rk ? "⬇ Save offline (base + "+REGIONS.find(x=>x[3]===rk)[0]+")" : "⬇ Save offline (base pack)";
+  s.textContent=savedHere ? "✓ Saved" : "⬇ Save";
   const names=Object.values(regs).map(x=>x.name);
   $("savedList").textContent=ix.base
     ? "Saved: overviews"+(names.length?" + "+names.join(", "):" — move the map to a region and save to add its currents")
@@ -2281,11 +2302,11 @@ function setStatus(m,err){ const e=$("status"); e.textContent=m; e.className="st
 // Beaufort colour chips at a given fill alpha — force number + wind range only, no descriptor, to keep the Key compact.
 function beaufortKey(alpha){
   let s="";
-  for(let f=0;f<=9;f++){
+  for(let f=1;f<=7;f++){
     const ktl = f===0 ? "calm" : `${kt(W_EDGES[f-1])}${f<W_EDGES.length?"–"+kt(W_EDGES[f]-1):"+"} kt`;
     s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[f],GRAY_LAND,alpha)}"></i>F${f} · ${ktl}</span>`;
   }
-  s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[10],GRAY_LAND,alpha)}"></i>F10+</span>`;
+  s+=`<span class="lchip"><i class="lsw" style="background:${blend(W_COL[8],GRAY_LAND,alpha)}"></i>F8+ · 33+ kt</span>`;
   return s;
 }
 /* Wrap the explanatory paragraphs of a Key into a click-to-open disclosure, closed by default —
@@ -2310,7 +2331,7 @@ function buildLegend(){
       const lbl = f===0 ? CUR_LBL[f]+" <span style='opacity:.6'>(unshaded)</span>" : CUR_LBL[f];
       s+=`<span class="lchip"><i class="lsw" style="background:${sw}"></i>${lbl}</span>`; }
   } else if(mode==="wind"){
-    s=`<span class="lchip" style="font-weight:600"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(md.alpha);
+    s=`<span class="lchip" style="font-weight:600"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Bf)</a>:</span>`+beaufortKey(md.alpha);
   } else if(steepStyle==="rings"){
     // rings drawn as an open circle (coloured border); fill behind = wind (Beaufort)
     /* PHONE TRIM, David 2026-08-07: the phone Key panel was taller than the map it explains. Three
@@ -2344,7 +2365,7 @@ function buildLegend(){
         +` — the layer no longer reports a Low band. Unringed water is unrated here, not flat.</span></span>`;
     // With wind arrows on, decode the fill's wind-speed colours inline (Beaufort key at the fill alpha)
     if($("windArrows").checked)
-      s+=`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`+beaufortKey(getAlpha());
+      s+=`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Bf)</a>:</span>`+beaufortKey(getAlpha());
     else
       s+=`<span class="lchip" style="opacity:.6">coloured fill = wind (Beaufort — see Wind layer)</span>`;
   } else if(steepStyle==="height"){
@@ -2434,7 +2455,7 @@ function buildLegend(){
      +`</svg>arrow = worst heading to be steering</span>`
      // The Beaufort chips are KEY, not prose — they decode the fill, so they stay out of the collapse
      // and stay next to the arrow swatch. The disclosure goes last, so both key rows read together.
-     +`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Beaufort)</a>:</span>`
+     +`<span class="lchip" style="font-weight:600;margin-left:6px"><a href="${HRDPS_URL}" target="_blank" rel="noopener" style="color:inherit">Wind (Bf)</a>:</span>`
      +beaufortKey(getAlpha())
      +legendMore("How to read these arrows · cautions",
         `<span class="lchip" style="opacity:.6">open head, and it grows OUT of the cell — it is a course to steer, not a flow.`
@@ -2644,7 +2665,7 @@ $("playBtn").onclick=()=>{ if(anim){clearInterval(anim);anim=null;$("playBtn").t
 const stepHour=d=>{ if(anim){clearInterval(anim);anim=null;$("playBtn").textContent="▶";} setHour(hour+d); };
 $("stepBack").onclick=()=>stepHour(-1);
 $("stepFwd").onclick=()=>stepHour(1);
-$("saveBtn").onclick=saveOffline; $("refreshBtn").onclick=refreshNow;
+$("refreshBtn").onclick=refreshNow;
 refreshOfflineUI();
 
 // Adopt ?mode= before the first base map / GL uniforms / tile pass, so a wind bookmark never pays
@@ -2714,8 +2735,8 @@ const headerDesc=document.querySelector("header details")||document.querySelecto
 let mobileApplied=null;                                 // guard: only touch the DOM on a real crossing
 window.mobileLayout=function(){
   const on=mobileMQ.matches; if(on===mobileApplied) return; mobileApplied=on;
-  if(on){ headerDesc.style.display="none"; $("map").append($("legend"),legendBtn); }
-  else { headerDesc.style.display=""; $("map").before($("legend")); legendBtn.remove(); }
+  if(on){ if(headerDesc) headerDesc.style.display="none"; $("map").append($("legend"),legendBtn); }
+  else { if(headerDesc) headerDesc.style.display=""; $("map").before($("legend")); legendBtn.remove(); }
   map.invalidateSize({animate:false});
 };
 mobileLayout();
@@ -2760,7 +2781,7 @@ async function boot(){
     }
     if(!TIMES.length) throw new Error("SSCOFS mesh and field manifests share no forecast hours");
     $("time").max=TIMES.length-1;
-    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h, both models)`;
+    $("timeCap").textContent=`Forecast timeline (${TIMES.length-1} h)`;
     const h=applyURL();
     setHour(isFinite(h)?h:0);
     refreshOfflineUI();
@@ -2988,7 +3009,7 @@ function pdfDrawLegend(pdf, snap, x, y, maxW) {
   }
 
   function beaufortRow(alpha) {
-    title("Wind (Beaufort):");
+    title("Wind (Bf):");
     for (let f = 0; f <= 9; f++) {
       const rgb = pdfBlend(W_COL[f], GRAY_LAND, alpha);
       const lbl = f === 0 ? "F0 calm" : "F" + f + " " + kt(W_EDGES[f-1]) + (f < W_EDGES.length ? "–" + kt(W_EDGES[f]-1) : "+") + " kt";
